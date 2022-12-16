@@ -1,0 +1,294 @@
+module LambSample exposing (MyRecord, TriState, TriState.(..) )
+
+-- Note: If you forget to add a module declaration, Elm will use this one instead:
+-- module Main exposing (..)
+
+import Post
+-- Post.Post, Post.estimatedReadTime, Post.encode, Post.decoder
+
+import Post as P
+-- P.Post, P.estimatedReadTime, P.encode, P.decoder
+
+import Post exposing (Post, estimatedReadTime)
+-- Post, estimatedReadTime
+-- Post.Post, Post.estimatedReadTime, Post.encode, Post.decoder
+
+import Post as P exposing (Post, estimatedReadTime)
+-- Post, estimatedReadTime
+-- P.Post, P.estimatedReadTime, P.encode, P.decoder
+
+-- imports are always at the beginning of the file
+import Data.List 
+import Data.Array as A
+import Data.Maybe exposing (Maybe, maybe, withDefault, map, andThen)
+
+
+
+-- To begin, here are some type declarations
+-- order of declaration does not count
+
+type alias MyInt = Int
+
+-- (Int, String, Char) is a valid type declaration iself
+type alias MyTuple = (Int, String, Char)
+
+-- you need a type constructor to create a polymorphic type
+type MyTuple a = MyTuple (Int, String, a)
+
+-- some value deeclarations to illustrate type constructor
+tuple1 = MyTuple (1, "test", 158) -- : MyTuple Int
+tuple2 = MyTuple 100 "test" "ccc" -- : MyTuple String
+
+type alias MyRecord = 
+    { x: Int
+    , y: Int
+    , someOtherField: MyTuple
+    }
+
+type TriState = 
+    | State1 Int
+    | State2
+    | State3
+    
+
+type MyList a =
+    | Nil
+    | (::) a (MyList a) -- infix type constructors are valid
+
+infixr 10 ::
+
+testRecord : TriState -> MyRecord  -> Int
+testRecord = \case
+    State1 x, _          => x
+    State2, { x = 18 }   => 1
+    _, { x = 3, y }      => if y >= 30
+                                then 2
+                                else x |> \x => x * y
+    _, r                 => r.x + (.y r)
+
+
+--| A classic ADT
+type Maybe a = Some a
+             | Nothing
+
+withDefault : Maybe a -> a -> a
+withDefault Nothing default = default
+withDefault (Some x) _ = x
+
+
+--| For later: a GADT
+type Expr a : Num a => Type
+    ExprInt Int       : Int -> Expr
+    ExprAdd Expr Expr : Expr -> Expr -> Expr
+    ExprScale Int Expr: Int -> Expr -> Expr
+    deriving (Eq, Ord, Enum, Bounded, Show, Read) -- default instance provided for these interfaces
+
+
+--| A typeclass
+interface Show a where
+    show : a -> String
+    -- with default implementation
+    show x = "Not yet implemented"
+
+--| Instances declarations are terse in Idris
+--| But Haskell ones are easiers to read (and to parse!)
+instance Show MyRecord
+    show { x, y, someOtherField, _ } = "{ x=" ++ show x ++ ", y" ++ show y  ++ ", somesomeOtherField=" ++ show someOtherField ++ " }"
+
+instance Show MyTuple
+    show (i, s, c) = "(" ++ show i ++ ", " ++ show s ++ ", " show c ++ ")"
+
+--| Some functions
+fact : Nat -> Integer
+fact n =
+    let
+        fact' : Integer -> Integer
+        fact 0 = 0
+        fact 1 = 1
+        fact n = n *        
+    in 
+        fact' (n |> toInteger)
+
+--| String usage
+-- String is made of Char (UTF8).
+-- La gestion des différentes tailles de Char implique l'intervention du compilateur
+-- Byte est un entier sur 7 bits (Byte7) ou 8 bits (Byte8)
+-- Regarder comment fonctionne Haskell avec Text sur le sujet.
+
+
+--| Unit Type. In Haskell the name of this type is '()'.
+-- In Lamb we make a disctinction btw the type and the real value (unique).
+type Unit = ()
+
+--| expérimentation des listes strictes et des séquences paresseuses en tenant compte
+-- Collection est plutôt une interface (à voir)
+interface Coll a = [a] -- '=' notation here reserved to primitive or a new kind of alias ?
+interface alias Coll a = [a] --  alternative clearer
+
+interface Seq a -- Coll with Lazy evaluation
+
+interface Inf a where -- struct which CAN be infinite. Used to help enforce totality of computations
+    take : Nat -> Inf a -> Fin a
+    drop : Nat -> Inf a -> Inf a
+
+interface Fin a -- 'a' is a struct which is garanteed to be finite
+
+
+-- les opérations disponibles sur Inf sont aussi disponibles sur Fin
+instance Inf (Fin a)
+
+--| Some instances
+instance Coll (List a) -- classic linked list
+instance Coll (Array a) -- boxed in the heap
+instance Coll (Vector a) -- unboxed
+instance Coll (Seq a) -- Seq peut servir à gérer des flux, des channels, des IO (sockets)
+
+type alias FinSeq a = Fin (Seq a) 
+type alias InfSeq a = Inf (Seq a) 
+
+--| List comprehensions (LC)
+-- une LC a pour type [a] // ie Collection a
+-- si le type de la valeur générée n'est pas spécifié
+-- (par annotation de type ou par inférrence de type)
+-- alors la notation est un
+
+
+
+--| gestion des types Lazy comme dans Idris
+ifFn : Bool -> Lazy a -> Lazy a -> a
+ifFn True thn _ = thn
+ifFn False _ els = els
+
+
+--| Fonctionnalité d'agent ou d'acteur (Erlang / Gleam...)
+-- Voir notamment : https://hackage.haskell.org/package/hactors-0.0.3.1/docs/Control-Concurrent-Actor.html
+-- Utile pour concevoir les types qui vont derrière
+-- Cependant, dans un souci de simplicité, il serait mieux de l'intégrer au langage comme le fait Erlang
+
+-- voici une syntaxe inspirée d'Erlang
+actor: Actor Pid -> Pid
+actor pid autrePid
+receive
+     Message1 -> send autrePid "voici un message"
+     Message2 -> expr2
+after
+     Timeout ->
+        ActionTimeOut
+
+register pid -- what?
+spawn (actor pid)
+
+-- Tentative de types...
+type alias ActorRef msg = 
+  { refId   :: ThreadId
+  , refMbox :: TQueue msg
+  } deriving (Eq)
+
+type alias Behaviour msg = { getBehaviour :: msg -> IO (Behaviour msg) }
+
+spawn : Behaviour msg -> IO (ActorRef msg)
+send : ActorRef msg -> msg -> IO ()
+
+
+
+--| Voici les types de Control.Concurrent.Actor (Haskell)
+type alias Process = ThreadId
+
+self : IO Process
+kill : IO Process -> IO ()
+exit : IO ()
+sleep : Int -> IO ()
+wait : IO ()
+say : String -> IO ()
+
+type MBox m = TChan m
+type alias Actor m =
+    { proc :: Process
+    , mbox :: MBox m
+    }
+
+actor : t -> (t -> MBox m -> IO a) -> IO (Actor m)
+spawn : (MBox m -> IO a) -> IO (Actor m)
+receive :: MBox m -> (m -> IO a) -> IO b
+(?) : MBox m -> (m -> IO a) -> IO b
+(<?) : IO (MBox m) -> (m -> IO a) -> IO b
+send : Actor m -> m -> IO m
+(!) : Actor m -> m -> IO m
+(<!) : IO (Actor m) -> m -> IO m
+(!>) : Actor m -> IO m -> IO m
+(<!>) : IO (Actor m) -> IO m -> IO m
+spawn_receive: (m -> IO a) -> IO (Actor m)
+on_exception : IO a -> IO a -> IO a
+tolerant : IO a -> IO a
+faultable : IO () -> IO ()
+
+-- FIN des types de Control.Concurrent.Actor (Haskell)
+
+
+--| Unités : inspiration du F#
+-- Mass, grams.
+measure type g
+-- Mass, kilograms.
+measure type kg
+-- Weight, pounds.
+measure type lb
+
+-- Distance, meters.
+measure type m
+-- Distance, cm
+measure type cm
+
+-- Distance, inches.
+measure type inch
+-- Distance, feet
+measure type ft
+
+-- Time, seconds.
+measure type s
+
+-- Force, Newtons.
+measure type N = kg m / s^2
+
+-- Pressure, bar.
+measure type bar
+-- Pressure, Pascals
+measure type Pa = N / m^2
+
+-- Volume, milliliters.
+measure type ml
+-- Volume, liters.
+measure type L
+
+-- Define conversion constants.
+gramsPerKilogram : float<g kg^-1> = 1000.0<g/kg>
+cmPerMeter : float<cm/m> = 100.0<cm/m>
+cmPerInch : float<cm/inch> = 2.54<cm/inch>
+
+mlPerCubicCentimeter : float<ml/cm^3> = 1.0<ml/cm^3>
+mlPerLiter : float<ml/L> = 1000.0<ml/L>
+
+-- Define conversion functions.
+convertGramsToKilograms (x : float<g>) = x / gramsPerKilogram
+convertCentimetersToInches (x : float<cm>) = x / cmPerInch
+
+
+
+--| valeurs réactives
+
+x : React Int
+x = R 10
+
+x2 : React Int
+x2 = [| !x * !x |] -- ou une notation comme ça, voir Idris
+
+-- Doit fonctionner avec les Effets comme Idris : Gestion du STATE
+-- la gestion du graphe sous-jacent est fournie par le compilateur
+-- il faudrait aussi avoir une capacité d'introspection en donnant accès au graphe mais pas facile
+-- on doit aussi pouvoir modifier les "formules" depuis l'IO sous forme de String puis les "compiler",
+-- pas facile...
+
+
+
+--| Gestion des threads
+-- un thread est un Worker qui se voit attribuer des Tasks
+-- Il existe 3 threads par défaut : UiWorker, GpuWorker, IoWorker
