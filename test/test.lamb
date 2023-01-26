@@ -57,10 +57,11 @@ type MyList a =
 
 infixr 10 ::
 
+-- On doit pouvoir faire du pattern matching sur les champ d'un case
 testRecord : TriState -> MyRecord  -> Int
 testRecord = \case
     State1 x, _          => x
-    State2, { x = 18 }   => 1
+    State2, { x = 18 }   => 1 -- peu importe le champ y du paramètre MyRecord
     _, { x = 3, y }      => if y >= 30
                                 then 2
                                 else x |> \x => x * y
@@ -68,12 +69,28 @@ testRecord = \case
 
 
 --| A classic ADT
-type Maybe a = Some a
+type Maybe a = Just a
              | Nothing
 
+
+-- PREMIERE ECRITURE : comme Haskell et Idris, impossible en Elm
 withDefault : Maybe a -> a -> a
 withDefault Nothing default = default
-withDefault (Some x) _ = x
+withDefault (Just x) _ = x
+
+-- DEUXIEME plus contrainte, l'unique possible en Elm
+withDefault : Maybe a -> a -> a
+withDefault maybe default =
+    case maybe of
+        Nothing -> default
+        (Just x) -> x
+
+-- TROISIEME, à envisager :
+withDefault : Maybe a -> a -> a
+withDefault = \case -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
+    Nothing, default -> default -- on note les virgule pour séparer les cas
+    (Just x), _ -> x
+
 
 
 --| For later: a GADT
@@ -90,11 +107,12 @@ interface Show a where
     -- with default implementation
     show x = "Not yet implemented"
 
---| Instances declarations are terse in Idris
+--| Instances declarations are terse in Idris (no keyword)
 --| But Haskell ones are easiers to read (and to parse!)
 instance Show MyRecord
     show { x, y, someOtherField, _ } = "{ x=" ++ show x ++ ", y" ++ show y  ++ ", somesomeOtherField=" ++ show someOtherField ++ " }"
 
+-- l'exemple de ces instances est inutile, car on voudrait pouvoir dériver automatiquement certaines interfaces comme 'Show', avec 'deriving'
 instance Show MyTuple
     show (i, s, c) = "(" ++ show i ++ ", " ++ show s ++ ", " show c ++ ")"
 
@@ -141,13 +159,50 @@ instance Inf (Fin a)
 --| Some instances
 instance Coll (List a) -- classic linked list
 instance Coll (Array a) -- boxed in the heap
-instance Coll (Vect a) -- unboxed
+instance Coll (Vect a) -- unboxed. Collection type by defaut because the most efficient in most common cases
 instance Coll (Seq a) -- Seq peut servir à gérer des flux, des channels, des IO (sockets)
 
 type alias FinSeq a = Fin (Seq a) 
 type alias InfSeq a = Inf (Seq a) 
 
---| List comprehensions (LC)
+-- | List litterals polymorphism
+-- la notation [] est polymorphique par défaut. Elle peut donc produire directement n'importe quel type de collection.
+
+-- without type annotation, it's a Vect Int
+-- oneVect : Vect Int
+oneVect = [1, 2, 3]
+
+-- Otherwise type constraint is necessary e.g. by explicit type annotation
+oneList : List Char
+oneList = ['a', 'b']
+
+-- type constraint provided by the caller signature
+testCollFn : Seq a -> Nat
+testCollFn xs =
+    head? xs
+
+-- ici on impose le type 'Seq a' à 'oneVect'. Son type par défaut ne s'applique plus
+-- et on obtient donc en réalité => oneVect : Seq Int
+testColl = testCollFn oneVect
+
+-- Convention : quand une fonction renvoie un 'Maybe a', son nom doit se terminer par '?'
+-- à ne pas confondre avec la notation ?typedHole
+head? : Seq a -> Maybe a
+head = \case
+    []           -> Nothing -- coll literal : ici lu comme un 'Seq'
+    x :: _ -> Just x  -- le constructeur :: appartient soit à List soit à Seq. Le compilateur utilise le bon en fonction du contexte, donc 'Seq'
+
+-- le fonctionnement des Maybe
+
+
+
+    
+    
+
+
+
+
+-- | List comprehensions (LC)
 -- une LC a pour type [a] // ie Collection a
 -- si le type de la valeur générée n'est pas spécifié
 -- (par annotation de type ou par inférrence de type)
@@ -155,12 +210,60 @@ type alias InfSeq a = Inf (Seq a)
 lc1 = []
 
 
---| gestion des types Lazy comme dans Idris
+-- | Evaluation strategy
+-- strictly evaluated
+-- special type Lazy, comme dans Idris : le compilateur fait le boulot :
+--  * pas la peine d'envoyer un type Lazy dans la fonction (avec 'defer')
+--  * pas la peine de lancer explicitement le calcul du thunk dans la fonction (avec 'force')
+--
+-- L'évaluation stricte reste prioritaire quand le compilateur ne peut déterminer s'il doit calculer les thunks.
+
+-- Exemple Lazy simple
 ifFn : Bool -> Lazy a -> Lazy a -> a
 ifFn True thn _ = thn
 ifFn False _ els = els
 
 
+-- Exemple complet
+-- BEGIN EXAMPLE
+calculSuperLong : Int -> Int
+calculSuperLong x = ...
+
+testLazy : Lazy Int -> Lazy Char -> Lazy String -> Bool -- on peut imaginer qu'en interne le compilateur peut inliner 2^3 versions de la fonction pour gérer les Lazy.
+testLazy li lc ls =                                     -- certaines de ces versions seront inutiles et élaguées, ou alors il encapsule au besoin les paramètres Lazy dans des thunk
+    if lc = 'a' then -- déclenche le calcul de 'lc' si c'est un thunk
+        True
+    else if ls = "stop" then -- déclenche le calcul de 'ls' (si c'est un thunk)
+        True
+    else
+        li == 0 -- déclenche le calcul de manière conditionnelle, si la valeur est ensuite utilisée sur un site d'appel non Lazy.
+                -- permet d'économiser des calculs potentiellement longs, à condition que ce gain soit déterminé de manière certaine par le compilateur dans le contexte
+                -- Donc : choix déterminé statiquement par le compilateur. Si doute, alors calcul lancé.
+                -- Dans l'absolu, le compilateur pourrait générer deux versions de cette fonction : une qui renvoie un "Bool" et une qui renvoie un "Lazy Bool"
+                -- Si le programmeur veut absolument du Lazy en retour, il lui suffit de l'indiquer dans le type de retour de la fonction
+
+testLazyConsummer : Bool -> Result Bool String
+testLazyConsummer launchCalculus =
+    let 
+        testLazyVal =
+            testLazy (calculSuperLong 2) 'c' "ok" -- on ne sait pas encore s'il faut le calculer. Le calcul sera déclenché si besoin
+    in
+    if launchCalculus then
+        Ok <| testLazyVal -- le résultat de testLazy est consommé à coup sûr. On lance le calcul.
+    else
+        Err "pb!" -- le réstultat de testLazy n'est pas consommé. Inutile de le calculer
+
+--
+
+testLazyReturnsLazy : Lazy Int -> Lazy Bool
+testLazyReturnsLazy li =
+    li == 0 -- ne lance pas le calcul mais retourne un thunk
+
+testLazyConsummer2 : Bool
+testLazyConsummer2 =
+    testLazyReturnsLazy 1 -- lance le calcul du thunk retourné.
+
+-- END EXAMPLE
 
 
 --| Fonctionnalité d'agent ou d'acteur (Erlang / Gleam...)
@@ -295,3 +398,6 @@ x2 = [| !x * !x |] -- ou une notation comme ça, voir Idris
 --| Gestion des threads
 -- un thread est un Worker qui se voit attribuer des Tasks
 -- Il existe 3 threads par défaut : UiWorker, GpuWorker, IoWorker
+
+
+-- fin
