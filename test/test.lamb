@@ -130,6 +130,7 @@ interface Seq a -- Coll with Lazy evaluation
 interface Inf a where -- struct which CAN be infinite. Used to help enforce totality of computations
     take : Nat -> Inf a -> Fin a
     drop : Nat -> Inf a -> Inf a
+    slice: Nat -> Nat -> Inf a 
 
 interface Fin a -- 'a' is a struct which is garanteed to be finite
 
@@ -140,7 +141,7 @@ instance Inf (Fin a)
 --| Some instances
 instance Coll (List a) -- classic linked list
 instance Coll (Array a) -- boxed in the heap
-instance Coll (Vector a) -- unboxed
+instance Coll (Vect a) -- unboxed
 instance Coll (Seq a) -- Seq peut servir à gérer des flux, des channels, des IO (sockets)
 
 type alias FinSeq a = Fin (Seq a) 
@@ -151,7 +152,7 @@ type alias InfSeq a = Inf (Seq a)
 -- si le type de la valeur générée n'est pas spécifié
 -- (par annotation de type ou par inférrence de type)
 -- alors la notation est un
-
+lc1 = []
 
 
 --| gestion des types Lazy comme dans Idris
@@ -160,12 +161,14 @@ ifFn True thn _ = thn
 ifFn False _ els = els
 
 
+
+
 --| Fonctionnalité d'agent ou d'acteur (Erlang / Gleam...)
 -- Voir notamment : https://hackage.haskell.org/package/hactors-0.0.3.1/docs/Control-Concurrent-Actor.html
 -- Utile pour concevoir les types qui vont derrière
 -- Cependant, dans un souci de simplicité, il serait mieux de l'intégrer au langage comme le fait Erlang
 
--- voici une syntaxe inspirée d'Erlang
+-- voici une syntaxe inspirée d'Erlang. Le 'receive' fonctionne comme un 'case' ou un 'select' en go
 actor: Actor Pid -> Pid
 actor pid autrePid
 receive
@@ -178,7 +181,7 @@ after
 register pid -- what?
 spawn (actor pid)
 
--- Tentative de types...
+-- Tentative de typage...
 type alias ActorRef msg = 
   { refId   :: ThreadId
   , refMbox :: TQueue msg
