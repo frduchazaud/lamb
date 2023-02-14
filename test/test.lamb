@@ -1,3 +1,7 @@
+#! si la première ligne du fichier commence par '#!', cette ligne est un commentaire. Elle permet de faire d'un fichier un script exécutable par le shell.
+--# pour insérer des pragmas et des annotations pour le compilateur
+
+
 module LambSample exposing (MyRecord, TriState, TriState.(..) )
 
 -- Note: If you forget to add a module declaration, Elm will use this one instead:
@@ -23,6 +27,11 @@ import Data.Array as A
 import Data.Maybe exposing (Maybe, maybe, withDefault, map, andThen)
 
 
+-- le commentaire '--:' en fin de ligne permet d'ajouter une annotation de type par le compilateur.
+-- Si cette annotation a déjà été remplie, elle est vérifiée par le compilateur et mise à jour avec le type le plus général possible.
+-- si on veut contraindre le type, alors il faut passer par une valeur intermédiaire dont on spécifiera le type
+
+
 
 -- To begin, here are some type declarations
 -- order of declaration does not count
@@ -36,8 +45,8 @@ type alias MyTuple = (Int, String, Char)
 type MyTuple a = MyTuple (Int, String, a)
 
 -- some value deeclarations to illustrate type constructor
-tuple1 = MyTuple (1, "test", 158) -- : MyTuple Int
-tuple2 = MyTuple 100 "test" "ccc" -- : MyTuple String
+tuple1 = MyTuple (1, "test", 158) --: MyTuple Int
+tuple2 = MyTuple 100 "test" "ccc" --: MyTuple String
 
 type alias MyRecord = 
     { x: Int
@@ -57,18 +66,20 @@ type MyList a =
 
 infixr 10 ::
 
--- On doit pouvoir faire du pattern matching sur les champ d'un case
+--- '---' introduit un commentaire de documentation
+--- On doit pouvoir faire du pattern matching sur les champ d'un case
 testRecord : TriState -> MyRecord  -> Int
-testRecord = \case
-    State1 x, _          => x
-    State2, { x = 18 }   => 1 -- peu importe le champ y du paramètre MyRecord
-    _, { x = 3, y }      => if y >= 30
-                                then 2
-                                else x |> \x => x * y
-    _, r                 => r.x + (.y r)
+testRecord =
+    \case
+        State1 x, _          -> x
+        State2, { x = 18 }   -> 1 -- peu importe le champ y du paramètre MyRecord
+        _, { x = 3, y }      -> if y >= 30
+                                    then 2
+                                    else x |> (_ * y) -- ou bien (\x -> x * y) ou bien else x * y
+        _, r                 -> r.x + (.y r)
 
 
---| A classic ADT
+--| A classic ADT  -- --| est un peu lourd à taper. On remplacera par --- comme pour le /// des langages .NET
 type Maybe a = Just a
              | Nothing
 
@@ -87,13 +98,14 @@ withDefault maybe default =
 
 -- TROISIEME, à envisager :
 withDefault : Maybe a -> a -> a
-withDefault = \case -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
-    Nothing, default -> default -- on note les virgule pour séparer les cas
-    (Just x), _ -> x
+withDefault =
+    \case -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
+        Nothing, default -> default -- on note les virgule pour séparer les cas
+        (Just x), _ -> x
 
 
 
---| For later: a GADT
+--| For later: a GADT. Avant de se lancer là-dedans, il faudrait bien réfléchir car complique fortement...
 type Expr a : Num a => Type
     ExprInt Int       : Int -> Expr
     ExprAdd Expr Expr : Expr -> Expr -> Expr
@@ -102,13 +114,13 @@ type Expr a : Num a => Type
 
 
 --| A typeclass
-interface Show a where
+interface Show a where -- interface en Idris, class en Haskell
     show : a -> String
     -- with default implementation
     show x = "Not yet implemented"
 
 --| Instances declarations are terse in Idris (no keyword)
---| But Haskell ones are easiers to read (and to parse!)
+--| But Haskell ones are easiers to read (and to parse!). Donc on prend celle d'Haskell
 instance Show MyRecord
     show { x, y, someOtherField, _ } = "{ x=" ++ show x ++ ", y" ++ show y  ++ ", somesomeOtherField=" ++ show someOtherField ++ " }"
 
@@ -121,21 +133,21 @@ fact : Nat -> Integer
 fact n =
     let
         fact' : Integer -> Integer
-        fact 0 = 0
-        fact 1 = 1
-        fact n = n *        
+        fact' 0 = 0
+        fact' 1 = 1
+        fact' n = n *        
     in 
-        fact' (n |> toInteger)
+        fact' (n |> toInteger) -- style : fact est récursive, donc l'appel est en premier
 
 --| String usage
 -- String is made of Char (UTF8).
 -- La gestion des différentes tailles de Char implique l'intervention du compilateur
 -- Byte est un entier sur 7 bits (Byte7) ou 8 bits (Byte8)
--- Regarder comment fonctionne Haskell avec Text sur le sujet.
+-- Regarder comment fonctionne Haskell avec Text et ByteString sur le sujet.
 
 
 --| Unit Type. In Haskell the name of this type is '()'.
--- In Lamb we make a disctinction btw the type and the real value (unique).
+-- In Lamb we make a distinction btw the type and the real value (unique).
 type Unit = ()
 
 --| expérimentation des listes strictes et des séquences paresseuses en tenant compte
@@ -179,7 +191,15 @@ oneList = ['a', 'b']
 -- type constraint provided by the caller signature
 testCollFn : Seq a -> Nat
 testCollFn xs =
-    head? xs
+    head? xs -- head? renvoie forcément type Maybe a, et le compilateur le vérifie
+
+
+-- l'annotation de fonction (son type) n'est pas fourni. Il s'agit d'une erreur que le compilateur doit corriger, en proposant un type le plus général possible.
+test x? y = -- le point d'interrogation de x? contraint le type de x? à être Maybe a. Ca marche pareil dans les 'let'
+    case x? of -- ici le compilateur doit proposer une complétion par défaut pour les types Somme
+        Nothing -> 0
+        Just x -> x + y
+
 
 -- ici on impose le type 'Seq a' à 'oneVect'. Son type par défaut ne s'applique plus
 -- et on obtient donc en réalité => oneVect : Seq Int
@@ -188,11 +208,14 @@ testColl = testCollFn oneVect
 -- Convention : quand une fonction renvoie un 'Maybe a', son nom doit se terminer par '?'
 -- à ne pas confondre avec la notation ?typedHole
 head? : Seq a -> Maybe a
-head = \case
-    []           -> Nothing -- coll literal : ici lu comme un 'Seq'
-    x :: _ -> Just x  -- le constructeur :: appartient soit à List soit à Seq. Le compilateur utilise le bon en fonction du contexte, donc 'Seq'
+head =
+    \case
+        []           -> Nothing -- coll literal : ici lu comme un 'Seq'
+        x :: _ -> Just x  -- le constructeur :: appartient soit à List soit à Seq. Le compilateur utilise le bon en fonction du contexte, donc 'Seq'
 
 -- le fonctionnement des Maybe
+
+
 
 
 
