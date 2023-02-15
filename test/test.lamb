@@ -110,6 +110,82 @@ withDefault =
         (Just x), _ -> x
 
 
+--- Les LAMBDAS
+-- Il y a plusieurs possibilités à évaluer
+f = \x -> x + 1 -- Comme Haskell et Elm. Les parenthèses ne sont pas obligatoires
+f = (\x -> x + 1) -- Idem mais avec des parenthèses obligatoires. Est-ce vraiment nécessaire ?
+
+
+
+
+--- Les GUARDS
+
+-- à la base, nous avons la cascade de 'if else'  : 'if _ then ... else if _ then ... else if _ then ... else ....'
+-- c'est la construction la plus simple.
+f x y = 
+    if 
+
+-- En Haskell. Pas toujours lisible je trouve.
+bmiTell :: (RealFloat a) => a -> a -> String -> String  
+bmiTell weight height name  
+    | bmi <= skinny = n ++ ", You're underweight, you emo, you!"  
+    | bmi <= normal = n ++ ", You're supposedly normal. Pffft, I bet you're ugly!"  
+    | bmi <= fat    = n ++ ", You're fat! Lose some weight, fatty!"  
+    | otherwise     = n ++ ", You're a whale, congratulations!"  
+    where bmi = weight / height ^ 2  -- impossible de mettre un 'let ... in' dans cette construction.
+          skinny = 18.5  
+          (normal, fat) = (25.0, 30.0)  
+          (n:_) = name  -- au passage on observe le pattern matching sur le type avec '_'. Est-ce utile ? Ne faut-il pas au contraire l'interdire ?
+                        -- utile uniquement si c'est un type hole.
+
+
+
+
+-- voici la syntaxe 'il let .... else ...' en Rust.
+ // If you need to specify a failure, use an else:
+    if let Some(i) = letter {
+        println!("Matched {:?}!", i);
+    } else {
+        // Destructure failed. Change to the failure case.
+        println!("Didn't match a number. Let's go with a letter!");
+    }
+-- Il    
+
+
+
+
+--- HOLES
+-- '?Aaaa' est un "type hole", qui remplace un type
+-- '?aaaa' est un "typed hole", qui remplace une valeur, une fonction ou un constructeur (de valeur)
+-- '?_' remplace soit une valeur soit un type. Ce "trou" n'est pas nommé.
+
+--
+-- A la compilation, le compilateur remplace les "trous de type anonymes" (?_) par le type le plus général possible (éventuellement avec contraintes)
+-- Les trous de valeur (ou de fonction ou de constructeur) sont toujours proposés au choix car il existe probablement une infinités de solutions
+-- Les propositions sont triées en fonction du contexte (il est logique d'utiliser les valeurs présentes dans le contexte) et
+-- aussi en fonction de leur simplicité (une seule fonction si possible, avec des arguments disponbibles dans le contexte)...
+
+f: List ?_ -> ?Val -> List Int
+f xs y =
+     (_ + y) <$> ?xs -- 'map'
+--donnera
+f: List ?_ -> ?Val -> List Int
+f xs y =
+     (_ + y) <$> ?xs -- 'map'
+
+
+-- autre exemple
+fCase : Maybe a -> a
+fCase x = 
+    case ?x of ?_   
+--donnera
+fCase : Maybe a -> a
+fCase x? = -- remplacement proposé de x en x? à cause de son type
+    case x? of -- remplacement de ?x par x?
+        Nothing -> ?aNothing -- les cas sont déroulés par le compilateurs et le code inconnu est complété par des trous.
+        Just x -> ?x
+
+
 
 --| For later: a GADT. Avant de se lancer là-dedans, il faudrait bien réfléchir car complique fortement...
 type Expr a : Num a => Type
@@ -120,10 +196,29 @@ type Expr a : Num a => Type
 
 
 --| A typeclass
-interface Show a where -- interface en Idris, class en Haskell
+interface Show a -- 'interface' en Idris, 'class' en Haskell. On peut faire sauter le 'where'. A la place on oblige à aller à la ligne et à indenter.
     show : a -> String
     -- with default implementation
     show x = "Not yet implemented"
+
+interface (Integral a) <= Addable a -- comme en Purescript, l'opérateur est dans ce sens pour respecter le sens de l'implication. 
+                                    -- on ajoute des parenthèses sur la contrainte de type pour mettre en valeur le nom de l'interface
+    one : a                         
+    inc : a -> a
+    decAbs : a -> a
+    add : a -> a -> a
+    -- with default implementation : dans cet exemple elles sont mutuellement récursives. L'instance devra donc fournir au moins l'une des deux.
+    inc x = add x one
+    add x y = 
+        case x of
+            0 -> y
+            x -> add (decAbs x) (inc y) -- tail recursive!
+    
+
+
+-- sur les contraintes de type on peut aussi imaginer qu'elles soient indiquées après
+interface Addable a => (Integral a, Eq a) -- plus clair à lire, sauf pour ceux qui ont l'habitude d'Haskell
+-- attention à la cohérence avec les autres endroits où on peut placer des contraintes de types.
 
 --| Instances declarations are terse in Idris (no keyword)
 --| But Haskell ones are easiers to read (and to parse!). Donc on prend celle d'Haskell
@@ -457,7 +552,8 @@ mkMeasure x m =
 
 
 
---| valeurs réactives
+--- VALEURS REACTIVES
+-- fonctionnalité du langage avec mots-clefs ou primitives, ou bien simple module ?
 
 x : React Int
 x = R 10
@@ -475,7 +571,7 @@ x2 = [| !x * !x |] -- ou une notation comme ça, voir Idris
 
 --| Gestion des threads
 -- un thread est un Worker qui se voit attribuer des Tasks
--- Il existe 3 threads par défaut : UiWorker, GpuWorker, IoWorker
+-- Il peut exister plusieurs sortes de threads, dont certains seraient activés par défaut : UiWorker, GpuWorker, IoWorker, PureWorker
 
 
 -- fin
