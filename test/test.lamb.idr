@@ -26,10 +26,16 @@ module LambSample exposing (MyRecord, TriState, TriState.(..) )
 
 
 -- Le module Main doit comporter la fonction main qui sera le point d'entrée du programme.
+-- Sinon erreur : le compilateur propose de la créer.
+
+
+-- Le compilateur doit comporter un outil de type cabal ou comme Elm.
+-- le fichier de package (elm.json) ou cabal.yaml...) permet de construire des packages présentant une lib et ou des exécutables (plusieurs exe + test + debug...)
+-- Pour construire un exécutable : il faut spécifier un module 'Main' qui expose un main
+-- Pour construire une lib : les modules 'Main' sont exclus automatiquement
 
 
 -- LES IMPORTS
-
 
 import Post
 -- Post.Post, Post.estimatedReadTime, Post.encode, Post.decoder
@@ -58,8 +64,12 @@ import Data.Maybe exposing (Maybe, maybe, withDefault, map, andThen)
 
 
 -- IMPORT LOCAL
-
-
+f k v =
+    import Data.Dict as D in
+    D.singleton k v
+-- hors de la fonction D est inconnu.
+-- il serait prudent d'interdire les "shadowing" des alias (as) de modules.
+-- le "shadowing" de noms de fonctions doit rester cependant possible.
 
 
 -- le commentaire '--:' en fin de ligne permet d'ajouter une annotation de type par le compilateur.
@@ -127,15 +137,15 @@ type Maybe a = Just a
 -- PREMIÈRE ÉCRITURE : comme Haskell et Idris, impossible en Elm
 -- Cette notation est utile pour coller aux équations mathématiques.
 withDefault : Maybe a -> a -> a
-withDefault Nothing default = default
-withDefault (Just x) _ = x
+withDefault Nothing  default = default
+withDefault (Just x) _______ = x -- on aligne les arguments et les '='. '___' (de toute longueur) est équivalent à '_'
 
 -- PREMIÈRE BIS : possible aussi avec les opérateurs en position infixe
 (++): List Unit -> Int -> List Unit
 xs ++ 0 = xs
 xs ++ i = () :: (xs ++ (i - 1)) --TODO non tail recursive. Should be rewritten
 
--- PREMIÈRE TER : possible aussi avec les opérateurs en position préfixe, mais déconseillée. Le compilateur génére un warning et propose de passer une réécriture en infixe.
+-- PREMIÈRE TER : possible aussi avec les opérateurs en position préfixe, mais déconseillée. Le compilateur génére un warning et propose une réécriture en infixe.
 (++): List Unit -> Int -> List Unit
 (++) xs 0 = xs
 (++) xs i = () :: (xs ++ (i - 1)) --TODO non tail recursive. Should be rewritten
@@ -308,11 +318,10 @@ bmiTell weight height name
 
 
 --- HOLES
--- '?Aaaa' est un "type hole", qui remplace un type
+-- '?Aaaa' est un "type hole", qui remplace un type (ou un nom de module ?)
 -- '?aaaa' est un "typed hole", qui remplace une valeur, une fonction ou un constructeur (de valeur)
--- '?_' remplace soit une valeur soit un type. Ce "trou" n'est pas nommé.
+-- '?_' remplace soit une valeur soit un type. Ce "trou" n'est pas nommé. C'est un "trou anonyme"
 
---
 -- A la compilation, le compilateur remplace les "trous de type anonymes" (?_) par le type le plus général possible (éventuellement avec contraintes)
 -- Les trous de valeur (ou de fonction ou de constructeur) sont toujours proposés au choix car il existe probablement une infinités de solutions
 -- Les propositions sont triées en fonction du contexte (il est logique d'utiliser les valeurs présentes dans le contexte) et
@@ -368,10 +377,24 @@ interface (Integral a) <= Addable a -- comme en Purescript, l'opérateur est dan
             x -> add (decAbs x) (inc y) -- tail recursive!
     
 
+-- FONCTIONS RECURSIVES
+
+
+
+
+
+
+-- CONTRAINTES DE TYPE
 
 -- sur les contraintes de type on peut aussi imaginer qu'elles soient indiquées après
 interface Addable a => (Integral a, Eq a) -- plus clair à lire, sauf pour ceux qui ont l'habitude d'Haskell
+
+-- ou bien encore plus clair :
+interface Addable a
+    => (Integral a, Eq a)
+
 -- attention à la cohérence avec les autres endroits où on peut placer des contraintes de types.
+
 
 --| Instances declarations are terse in Idris (no keyword)
 --| But Haskell ones are easiers to read (and to parse!). Donc on prend celle d'Haskell
@@ -386,16 +409,17 @@ instance Show MyTuple
 fact : Nat -> Integer
 fact n =
     let
-        fact' : Integer -> Integer
+        fact' : Int -> Integer -> Integer
         fact' =
-            \case n acc 
-            0 _ => 0
-            1 x => x
-            n x => fact' (n - 1) (n * x)
+            \case n, acc 
+                0, _ => 0
+                1, acc => x
+                n, acc => fact' (n - 1) (n * acc)
     in 
-        fact' (n |> toInteger, 1) -- style : fact est récursive, donc l'appel est en premier
+        fact' n 1
 
---| String usage
+
+--| STRING USAGE
 -- String is made of Char (UTF8).
 -- La gestion des différentes tailles de Char implique l'intervention du compilateur
 -- Byte est un entier sur 7 bits (Byte7) ou 8 bits (Byte8)
@@ -403,21 +427,30 @@ fact n =
 
 
 --| Unit Type. In Haskell the name of this type is '()'.
--- In Lamb we make a distinction btw the type and the real value (unique).
+-- In Lamb we make a distinction btw the type and the value (unique).
+-- A la compilation, ces valeurs sont effacées car elles ne servent qu'à assurer la cohérence des types.
 type Unit = ()
+
 
 --| expérimentation des listes strictes et des séquences paresseuses en tenant compte
 -- Collection est plutôt une interface (à voir)
-interface Coll a = [a] -- '=' notation here reserved to primitive or a new kind of alias ?
-interface alias Coll a = [a] --  alternative clearer
+interface Coll a
+    ...
 
-interface Seq a -- Coll with Lazy evaluation
+--- Seq is a Coll with Lazy evaluation
+interface Seq a 
+    => (Coll a)
+    ...
 
-interface Inf a where -- struct which CAN be infinite. Used to help enforce totality of computations
+--- Inf is a Coll which CAN be infinite. So it has to be a Seq. Used to help enforce totality of computations
+-- Seq /= Inf ? à creuser...
+interface Inf a 
+    => (Seq a)
     take : Nat -> Inf a -> Fin a
     drop : Nat -> Inf a -> Inf a
     slice: Nat -> Nat -> Inf a 
 
+---
 interface Fin a -- 'a' is a struct which is garanteed to be finite
 
 
