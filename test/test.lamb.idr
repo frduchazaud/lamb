@@ -442,26 +442,22 @@ interface Seq a
     => (Coll a)
     ...
 
---- Inf is a Coll which CAN be infinite. So it has to be a Seq. Used to help enforce totality of computations
--- Seq /= Inf ? à creuser...
+--- Inf is a Coll which CAN be infinite. Used to help enforce totality of computations
 interface Inf a 
-    => (Seq a)
     take : Nat -> Inf a -> Fin a
     drop : Nat -> Inf a -> Inf a
     slice: Nat -> Nat -> Inf a 
 
 ---
-interface Fin a -- 'a' is a struct which is garanteed to be finite
-
-
--- les opérations disponibles sur Inf sont aussi disponibles sur Fin
-instance Inf (Fin a)
+interface Fin a     -- 'a' is a struct which is garanteed to be finite
+    => (Inf a)      -- les opérations disponibles sur Inf sont aussi disponibles sur Fin
+    count: Fin a -> Int
 
 --| Some instances
-instance Coll (List a) -- classic linked list
-instance Coll (Array a) -- boxed in the heap
-instance Coll (Vect a) -- unboxed. Collection type by defaut because the most efficient in most common cases
-instance Coll (Seq a) -- Seq peut servir à gérer des flux, des channels, des IO (sockets)
+instance Fin (List a)  -- classic linked list
+instance Fin (Array a) -- boxed in the heap
+instance Fin (Vect a)  -- unboxed. Collection type by defaut because the most efficient in most common cases
+instance Inf (Seq a)   -- Seq peut servir à gérer des flux, des channels, des IO (sockets)
 
 type alias FinSeq a = Fin (Seq a) 
 type alias InfSeq a = Inf (Seq a) 
@@ -475,21 +471,23 @@ hanoi_shower :: Show a => [(a, a)] -> String
 hanoi_shower [(a, b)] = "Move " ++ show a ++ " to " ++ show b ++ "."
 
 -- Le même exemple ci-dessous est plus clair au niveau de l'annotation :
-hanoiPrinter : Show a => Coll (a, a) -> String
-hanoiPrinter =
-    \case
+hanoiPrinter : Coll (a, a) -> String     => (Show a)    -- formatage : le ':' et le '=' sont alignés (une espace avec le nom de valeur/fonction).
+hanoiPrinter =                                          --             et le '=>' est distant pour plus de clarté
+    \case                                               --             pas d'alignement quand il y a des arguments à la fonction, donc pas d'espace avant le ':'.
         []          -> ""
-        (a, b)::_   -> "Move " ++ show a ++ " to " ++ show b ++ "."
+        (a, b) :: _   -> "Move " ++ show a ++ " to " ++ show b ++ "."
         
 La notation polymorphique [x, y] est donc réservée aux valeurs.
 
 -- without type annotation, it's a Vect Int // qu'il y ait un type par défaut est à discuter
--- oneVect : Vect Int
-oneVect = [1, 2, 3]
+oneVect = [1, 2, 3] --: Vect Int
 
 -- Otherwise type constraint is necessary e.g. by explicit type annotation
 oneList : List Char
 oneList = ['a', 'b']
+
+-- ou encore, mais utile hors lambdas ?
+oneList = ['a', 'b'] : List Char
 
 -- type constraint provided by the caller signature
 testCollFn : Seq a -> Nat
@@ -504,9 +502,12 @@ test x? y = -- le point d'interrogation de x? contraint le type de x? à être '
         Just x -> x + y -- le compilateur peut proposer une complétion pertinente avec le nom sans le point d'interrogation
 
 
--- ici on impose le type 'Seq a' à 'oneVect'. Son type par défaut ne s'applique plus
--- et on obtient donc en réalité => oneVect : Seq Int
-testColl = testCollFn oneVect
+-- ici on impose le type 'Seq a' à 'oneVect'. Son type par défaut ne s'applique plus et on obtient donc :
+testColl = testCollFn oneVect --: Seq Int
+    -- si en revanche on avait annoté oneVect :
+    -- >>> oneVect : Vect Int
+    -- >>> oneVect = [1, 2, 3]
+    -- alors il y aurait eu un conflit de type
 
 -- Convention : quand une fonction renvoie un 'Maybe a', son nom doit se terminer par '?'
 -- Idem pour un 'Result err ok'
