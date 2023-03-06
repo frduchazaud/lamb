@@ -320,7 +320,7 @@ bmiTell weight height name
 --- HOLES
 -- '?Aaaa' est un "type hole", qui remplace un type (ou un nom de module ?)
 -- '?aaaa' est un "typed hole", qui remplace une valeur, une fonction ou un constructeur (de valeur)
--- '?_' remplace soit une valeur soit un type. Ce "trou" n'est pas nommé. C'est un "trou anonyme"
+-- '?_' est un "anonymous hole", qui remplace soit une valeur soit un type. Ce "trou" n'est pas nommé.
 
 -- A la compilation, le compilateur remplace les "trous de type anonymes" (?_) par le type le plus général possible (éventuellement avec contraintes)
 -- Les trous de valeur (ou de fonction ou de constructeur) sont toujours proposés au choix car il existe probablement une infinités de solutions
