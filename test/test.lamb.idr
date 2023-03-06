@@ -2,10 +2,34 @@
 --# pour insérer des pragmas et des annotations pour le compilateur
 
 
+-- LE MODULE, LES EXPORTS, LE MAIN
+
 module LambSample exposing (MyRecord, TriState, TriState.(..) )
 
+-- Le nom du module doit correspondre à celui du fichier (casse à l'identique)
+-- Le nom du fichier est postfixé par l'extension '.lamb'
+-- Le nom du module ne mentionne pas les répertoires contenant le fichier (pas de 'module Data.List' par exemple), pour une meilleure portabilité du fichier (
+-- Si le nom du module et le nom du fichier diffèrent : alors avertissement avec deux actions correctives proposées :
+    -- 1/ changement du nom du module
+    -- 2/ changement du nom du fichier
+
 -- Note: If you forget to add a module declaration, Elm will use this one instead:
--- module Main exposing (..)
+-- >>> module Main exposing (..)
+
+-- En Lamb : Si un seul fichier à compiler, pas besoin de déclarer le nom de module, sinon c'est une erreur.
+-- Si un seul fichier sans déclaration de module alors
+--      Si pas de module Main : proposera 1/ 'module Main exposing (main)' et 2/ 'module NomDuFichier exposing ()'
+--      Sinon : proposition 'module NomDuFichier exposing ()'
+-- Si plusieurs fichiers sans déclaration de module Main
+--      Si un des fichier comporte la fonction main : proposition de 'module Main exposing (main)' et pour les autres fichiers : 'module NomDuFichier exposing ()' 
+--      Sinon 'module NomDuFichier exposing ()' pour chacun.
+
+
+-- Le module Main doit comporter la fonction main qui sera le point d'entrée du programme.
+
+
+-- LES IMPORTS
+
 
 import Post
 -- Post.Post, Post.estimatedReadTime, Post.encode, Post.decoder
@@ -26,9 +50,16 @@ import Data.List
 import Data.Array as A
 import Data.Maybe exposing (Maybe, maybe, withDefault, map, andThen)
 
--- Haskell imports with keyword 'hiding' is not desirable 
+-- Haskell imports with keyword 'hiding' can be very convenient in some fast use cases
 -- >>> import Data.List exposing (..) hiding (map)
--- en effet si une version ultérieure du module importé ajoute des fonctions déjà présentes dans le module qui importe on aura une ambiguïté.
+-- Attention cependant à son usage. Elm l'interdit par exemple. Il est préférable de s'en passer.
+-- L'inconvéneient est qu'on ne voit pas explicitement de quel module est importé un nom, ce qui peut créer des quiproquo.
+-- Si l'IDE est efficace, il proposera des actions pour déclarer les imports qui vont automatiser tout ce travail (comme le plugin Elm dans IntelliJ)
+
+
+-- IMPORT LOCAL
+
+
 
 
 -- le commentaire '--:' en fin de ligne permet d'ajouter une annotation de type par le compilateur.
@@ -36,6 +67,9 @@ import Data.Maybe exposing (Maybe, maybe, withDefault, map, andThen)
 -- si on veut contraindre le type, alors il faut passer par une valeur intermédiaire dont on spécifiera le type
 
 -- le commentaire --! permet d'annoter une ligne pour laquelle le compilateur renvoie un 
+
+
+
 
 
 
@@ -90,31 +124,150 @@ type Maybe a = Just a
              | Nothing
 
 
--- PREMIERE ECRITURE : comme Haskell et Idris, impossible en Elm
+-- PREMIÈRE ÉCRITURE : comme Haskell et Idris, impossible en Elm
+-- Cette notation est utile pour coller aux équations mathématiques.
 withDefault : Maybe a -> a -> a
 withDefault Nothing default = default
 withDefault (Just x) _ = x
 
--- DEUXIEME plus contrainte, l'unique possible en Elm
+-- PREMIÈRE BIS : possible aussi avec les opérateurs en position infixe
+(++): List Unit -> Int -> List Unit
+xs ++ 0 = xs
+xs ++ i = () :: (xs ++ (i - 1)) --TODO non tail recursive. Should be rewritten
+
+-- PREMIÈRE TER : possible aussi avec les opérateurs en position préfixe, mais déconseillée. Le compilateur génére un warning et propose de passer une réécriture en infixe.
+(++): List Unit -> Int -> List Unit
+(++) xs 0 = xs
+(++) xs i = () :: (xs ++ (i - 1)) --TODO non tail recursive. Should be rewritten
+
+
+-- DEUXIÈME plus contrainte, l'unique possible en Elm
 withDefault : Maybe a -> a -> a
 withDefault maybe default =
     case maybe of
-        Nothing -> default
+        Nothing  -> default
         (Just x) -> x
 
--- TROISIEME, à envisager :
+-- TROISIÈME :
 withDefault : Maybe a -> a -> a
 withDefault =
     \case -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
-        Nothing, default -> default -- on note les virgule pour séparer les cas
-        (Just x), _ -> x
+        Nothing default -> default -- on note les virgule pour séparer les cas
+        (Just x) _      -> x
+
+-- TROISIÈME BIS : avec un nom utile pour la documentation de la lambda.
+-- Possible avec '->' uniquement si un seul argument. Si plusieurs arguments, le compilateur fera une erreur et proposera de réécrire les cas avec '=>' au lieu de '->'
+add1 : Maybe Int -> Maybe Int
+add1 =
+    \case x? -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
+        Nothing -> Nothing
+        Just x  -> Just (x + 1)
+    -- ok c'est exemple est vraiment artificiel. On aurait pu remplacer la Lambda par : 'Maybe.map (_ + 1)'
+
+-- QUATRIÈME :
+withDefault : Maybe a -> a -> a
+withDefault =
+    \case -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
+        Nothing, default => default -- on note les virgule pour séparer les cas
+        Just x,  _       => x       -- on aurait pu ajouter des annotation de type et des substitutions ('as' ou '@')
+
+-- QUATRIÈME BIS : avec un nom utile pour la documentation de la lambda
+withDefault : Maybe a -> a -> a
+withDefault =
+    \case x?, default               -- facultatif : les arguments de la lambda sont nommés et séparés par des virgules. Cela documente la lambda et peut servir pour la complétion de l'IDE
+        Nothing, default => default -- l'IDE peut maintenant proposer ce cas automatiquement. Les noms dans les cas doivent correspondre exactement à ceux du \case ("shadowing" interdit)
+        Just x,  _______ => x       -- l'IDE aura d'abord proposé le cas 'Just x, default =>'. Le compilateur proposera une fois la ligne complète de remplacer 'default' par '_' car non utilisé à droite.
+    -- formatage : les arguments, les '->' et les '=>' sont alignés verticalement. Si ce n'est pas possible, on passe au formatage de type Elm comme ci-dessous
+    -- Pour faciliter le formatage, le '_' peut compter autant '_' que nécessaire.
+    
+-- QUATRIÈME TER : idem avec formatage sur plusieurs lignes comme en Elm.
+withDefault : Maybe a -> a -> a
+withDefault =
+    \case x?, default 
+        Nothing, default =>
+            default -- avec un retrait car continuation de la ligne précédente
+
+        Just x, _ => -- pas d'alignement des arguments et du '=>'
+            x     
+
 
 
 --- Les LAMBDAS
 -- Il y a plusieurs possibilités à évaluer
 f = \x -> x + 1 -- Comme Haskell et Elm. Les parenthèses ne sont pas obligatoires
-f = (\x -> x + 1) -- Idem mais avec des parenthèses obligatoires. Est-ce vraiment nécessaire ?
+f = (\x -> x + 1) -- Idem mais avec des parenthèses obligatoires. Est-ce vraiment nécessaire ? non sauf si pose un problème dans le contexte.
+f =
+    \x ->
+        x + 1
 
+-- On peut aussi imaginer les notations équivalentes suivantes :
+f: Number -> Number -> Number
+f =
+    \x y -> x + y + 1
+
+-- ou bien avec des annotations de type facultatives
+f = 
+    \(x: Number) (y: Number) -> x + y + 1 : Number
+
+-- ou bien
+f =
+    \x, y => x + y + 1 -- comme en Idris bien qu'ici inutile. Sert à ajouter des annotations de type ou des 'as'. Il ne s'agit pas du tuple (x,y)
+
+-- petit piège :
+f =
+    \(x, y) => x + y + 1 -- la lambda n'a qu'un argument, le tupe '(x,y)'. On le voit grâce aux parenthèses.
+    
+    -- pour éviter l'équivoque, le compilateur doit refuser la notation avec '=>' quand il n'y a qu'un argument et proposer '->' à la place :
+    \(x, y) -> x + y + 1 -- Ouf c'est plus clair !
+
+
+-- ou bien
+f =
+    \x: Number, y: Number => x + y + 1 : Number
+    
+    -- Bien noter ici que l'espace avant le dernier':' indique qu'il concerne toute l'expression
+    -- cela équivaut à '\x: Number, y: Number => (x + y + 1): Number'
+    -- Le formatage suivant est aussi possible pour plus de clarté
+    --      '\x: Number, y: Number =>
+    --                                x + y + 1
+    --                                : Number'     -- on note l'alignement de l'indentation, qui est un peu une exception, donc à tester dans le cas limites...
+    -- cette notation est très logique et doit donc être possible par cohérence au sein du langage
+    -- mais en pratique elle n'est pas très utile donc à réserver aux cas où elle clarifie les choses
+    -- elle pourra être supprimée si elle n'apporte rien au final, par simplicité.
+
+    -- si le ':' avait été collé au 1, il aurait pu spécifier le type du dernier élément de l'expression (ici le '1'), ce qui n'aurait pas été clair
+    -- Pour éviter ce doute pour le lecteur du code, le compilateur prend cela comme une erreur et proposera de choisir entre :
+        -- 1/ Ajouter l'espace avant le ':'
+        -- 2/ Mettre l'annotation à la ligne suivante
+        -- 3/ Ajouter des parenthèses autour du terme typé. Ici : '\x: Number, y: Number => x + y + (1: Number)'
+
+
+
+-- TUPLES
+-- Comme en Haskell, on a les opérateurs suivants : '(,)' '(,,)' '(,,,)' etc.
+-- Le tuple est obligatoirement entouré de parenthèses, ça facilite le parsing, évite les erreurs
+
+(,): a -> b -> (a, b)
+(,) x y = (x, y) -- fonction écrite en préfixe
+x, y = (x, y)    -- cette notation infixe pose des problème car les parenthèses manquent et pourtant elle serait valide.
+
+-- Ou alors il faudrait changer le nom de l'opérateur, ce qui serait plus cohérent:
+((,)): a -> b -> (a, b)
+x (,) y = (x, y)
+-- Mais cela signifie alors qu'un opérateur peut inclure des parenthèses, ce qui pose d'autres problèmes de parsing.
+
+-- La bonne pratique, comme en Elm, est de ne pas utiliser les tuples au-delà de trois éléments.
+-- Au-delà de trois éléments, il est possible
+
+
+
+-- LES SUBSTITUTIONS
+-- on utilise le mot-clef 'as' puisqu'il est déjà disponible dans le contexte des imports.
+f: Number
+f =
+    \case
+        Nothing, i => (Nothing, ())
+        (Just x), i -> x + i
 
 
 
@@ -234,11 +387,13 @@ fact : Nat -> Integer
 fact n =
     let
         fact' : Integer -> Integer
-        fact' 0 = 0
-        fact' 1 = 1
-        fact' n = n *        
+        fact' =
+            \case n acc 
+            0 _ => 0
+            1 x => x
+            n x => fact' (n - 1) (n * x)
     in 
-        fact' (n |> toInteger) -- style : fact est récursive, donc l'appel est en premier
+        fact' (n |> toInteger, 1) -- style : fact est récursive, donc l'appel est en premier
 
 --| String usage
 -- String is made of Char (UTF8).
