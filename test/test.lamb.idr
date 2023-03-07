@@ -114,25 +114,39 @@ type MyList a =
     | Nil
     | (::) a (MyList a) -- infix type constructors are valid
 
-infixr 10 ::
+infixr 10 :: -- sans les parenthèses
 
 --- '---' introduit un commentaire de documentation
 --- On doit pouvoir faire du pattern matching sur les champ d'un case
 testRecord : TriState -> MyRecord  -> Int
 testRecord =
     \case
-        State1 x, _          -> x
-        State2, { x = 18 }   -> 1 -- peu importe le champ y du paramètre MyRecord
-        _, { x = 3, y }      -> if y >= 30
-                                    then 2
-                                    else x |> (_ * y) -- ou bien (\x -> x * y) ou bien else x * y
-        _, r                 -> r.x + (.y r)
+        State1 x, __________   -> x
+        State2  , { x = 18 }   -> 1 -- peu importe le champ y du paramètre MyRecord
+        ______  , { x = 3, y } -> if y >= 30 then 2 else x |> (_ * y) -- ou bien (\x -> x * y) ou bien else x * y
+        ______  , r            -> r.x + (.y r)
 
 
 --| A classic ADT  -- --| est un peu lourd à taper. On remplacera par --- comme pour le /// des langages .NET
 type Maybe a = Just a
              | Nothing
 
+type OtherList a = List a   -- il s'agit d'un autre type, assorti de fonctions de conversions, si on en a besoin
+    toList : OtherList a -> List a  -- cette fonction s'appelle : OtherList.toList. On peut l'importer comme les Variants
+    toList xs = xs -- c'est le seul endroit où les conversions implicites peuvent être faites.
+
+    fromList : List a -> OtherList a
+    fromList xs = xs
+
+--- En Haskell on aurait écrit :
+newtype OtherList a = OtherList (List a)  -- Mais c'est lourd car il faut qualifier toutes les valeurs par 'OtherList'
+
+type OtherList = List       -- KO : pas de point-free pour les créations de types. Sinon ça devient trop compliqué...
+
+--- attention car la déclaration suivante peut poser pb
+type ANewVariant a
+    = List a    -- variant ou type ? Les Types et les constructeurs de type en sont pas dans les espaces de noms donc on ne peut pas savoir.
+    | Vide      -- il y a un deuxième cas donc c'est un variant. Mais s'il n'y a qu'un seul cas, 
 
 -- PREMIÈRE ÉCRITURE : comme Haskell et Idris, impossible en Elm
 -- Cette notation est utile pour coller aux équations mathématiques.
