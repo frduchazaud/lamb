@@ -166,8 +166,28 @@ f k v =
 
 
 
-------------------------
--- COMMENTAIRES SPECIAUX
+
+-- COMMENTAIRES ET COMMENTAIRES SPECIAUX
+
+-- Règle générale : un commentaire se place avant la ligne qu'il commente ou en fin de ligne (sauf pour les imports où '--:' est après)
+
+-- Le commentaire de fin de ligne '--' est privilégié
+
+{- Le commentaire de bloc ne sert qu'à désactiver un bloc de code
+    il commence par '{-' et se termine par '-}'
+        {- il est imbricable -}
+        on peut désactiver le début du commentaire avec {--}
+        on peut désactiver la fin du commentaire avec --} comme en Elm
+-}
+
+{- L'IDE propose contextuellement de :
+        - transformer les commentaires de bloc en commentaires classiques
+                (l'inverse n'apparaît pas pertinent à ce stade)
+        - commenter un bloc sélectionné : soit en commentaire de bloc, soit en commentaires classiques
+        - décommenter un bloc sélectionné
+        - décommenter la région sélectionnée
+-}
+
 
 --# pour une directive (rappel de plus haut)
 
@@ -196,7 +216,17 @@ f k v =
 -- cela sert pour illustrer ou pour les 
 
 --# test "Nom du test facultatif" >>> du_code_à_tester_qui_doit_être_égal_à_True
--- le compilateur 
+-- Ces lignes de test sont placées au-dessus de la fonction testée.
+-- Si le test échoue, alors le compilateur renvoie une erreur et l'indique en bout de ligne avec une croix rouge (UTF-8)
+-- Si le test réussit, alors le compilateur l'indique en bout de ligne avec une coche verte (UTF-8)
+
+---# test "Nom du test facultatif" >>> du_code_à_tester_qui_doit_être_égal_à_True
+-- Idem mais sera également repris dans la documentationCela fera dans ce cas partie des propriétés ou des exemples des la fonction
+
+-- on peut imaginer étendre cette syntaxe dans les méthodes des interfaces et générer automatiquement des tests (QuickCheck) pour les instances.
+-- On ne rentre pas dans les preuves mais on pourrait finir par trouver des erreurs.
+-- Comme c'est lourd à calculer, surtout à chaque fois, cela serait déclenché sur une commande : "lamb test" par exemple.
+
 
 
 --- Documentation
@@ -204,6 +234,7 @@ f k v =
 --      1/ générer de la documentation avec "lamb doc"
 --      2/ être reprise le compilateur pour générer ses messages d'erreur
 --      3/ être reprise par l'IDE pour ses messages et son aide à la complétion
+-- en effet le '--|' de Haskelle et consorts est un peu lourd à taper. On le remplace donc par '---' comme pour le '///' des langages .NET
 
 
 -- To begin, here are some type declarations
@@ -211,13 +242,13 @@ f k v =
 
 type alias MyInt = Int
 
--- (Int, String, Char) is a valid type declaration iself
+-- (Int, String, Char) is a valid type declaration itself
 type alias MyTuple = (Int, String, Char)
 
--- you need a type constructor to create a polymorphic type
+-- you need a type constructor to create a polymorphic type (cette nécessité est à vérifier...)
 type MyTuple a = MyTuple (Int, String, a)
 
--- some value deeclarations to illustrate type constructor
+-- some value declarations to illustrate type constructor
 tuple1 = MyTuple (1, "test", 158) --: MyTuple Int
 tuple2 = MyTuple 100 "test" "ccc" --: MyTuple String
 
@@ -238,8 +269,10 @@ type MyList a =
     | (::) a (MyList a) -- infix type constructors are valid
 
 infixr 10 :: -- sans les parenthèses
+-- Est-ce la priorité et l'associativité des opérateurs est locale au module ? au package ? à l'application ?
+-- la manière de Typescript peut être intéressante pour clarifier cela : >>> infixr 10 :: as Cons
 
---- '---' introduit un commentaire de documentation
+
 --- On doit pouvoir faire du pattern matching sur les champ d'un case
 testRecord : TriState -> MyRecord  -> Int
 testRecord =
@@ -250,9 +283,19 @@ testRecord =
         ______  , r            -> r.x + (.y r)
 
 
---| A classic ADT  -- --| est un peu lourd à taper. On remplacera par --- comme pour le /// des langages .NET
+--- A classic ADT
 type Maybe a = Just a
              | Nothing
+
+--- Un type plus complet
+type Account
+    = Admin String
+    | Employee { name: String, corp: String, service: String, phone: PhoneNumber }
+    | Client { name: String, address: Address, phone: PhoneNumber }
+
+
+--- Un type récursif. L'aide de Elm est fantastique pour cela
+type 
 
 type OtherList a = List a   -- il s'agit d'un autre type, assorti de fonctions de conversions, si on en a besoin
     toList : OtherList a -> List a  -- cette fonction s'appelle : OtherList.toList. On peut l'importer comme les Variants
