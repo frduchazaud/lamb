@@ -1,10 +1,18 @@
-#! si la première ligne du fichier commence par '#!', cette ligne est un commentaire. Elle permet de faire d'un fichier un script exécutable par le shell.
---# pour insérer des pragmas et des annotations pour le compilateur
+#! si la première ligne du fichier commence par '#!', cette ligne est traitée comme un commentaire. Elle permet de faire d'un fichier un script exécutable par le shell.
+--# directive -- pour insérer des pragmas et des annotations pour le compilateur. La directive est d'une couleur particulière pour montrer qu'elle est activée
+-- # directive désactivée par l'ajout d'une espace. Elle redevient un commentaire.
 
+--# show_packages -- affiche les packages d'où proviennent les imports. Utile ponctuellement pour le débogage
 
 -- LE MODULE, LES EXPORTS, LE MAIN
 
-module LambSample exposing (MyRecord, TriState, TriState.(..) )
+module LambSample exposing (MyRecord, TriState, TriState.(..))
+
+-- si on a seulement 'module LambSample' ou 'module LambSample exposing ()'
+-- alors le compilateur génère une erreur : "le module LambSample n'expose aucun nom"
+-- et le compilateur propose les actions suivantes :
+--      1/ exporter tous les noms en général en ajoutant l'ellipse : >>> module LambSample exposing (..)
+--      2/ exporter tous les noms du module explicitement :          >>> module LambSample exposing (MyRecord, TriState, TriState.(..), ...........)
 
 -- Le nom du module doit correspondre à celui du fichier (casse à l'identique)
 -- Le nom du fichier est postfixé par l'extension '.lamb'
@@ -35,32 +43,115 @@ module LambSample exposing (MyRecord, TriState, TriState.(..) )
 -- Pour construire une lib : les modules 'Main' sont exclus automatiquement
 
 
+
 -- LES IMPORTS
 
-import Post
--- Post.Post, Post.estimatedReadTime, Post.encode, Post.decoder
+-- Ils sont forcément placés en tête de module.
+-- On ne peut pas importer entre deux fichiers.
+-- On ne peut pas importer localement, sauf à l'intérieur d'une fonction.
+-- Les imports ne peuvent pas se masquer entre eux : cela génère une erreur. Le compilateur propose une ou des solutions
 
-import Post as P
--- P.Post, P.estimatedReadTime, P.encode, P.decoder
+-- Le Prelude doit être importé en premier avec une ligne qui commence par : >>> import Prelude
+-- Si le module Prelude n'est pas importé, le compilateur génère une erreur.
+-- Il propose alors deux actions : 
+--      1/ ajouter le Prelude : >>> import Prelude exposing (..)
+--      2/ spécifier que le Prelude ne doit pas être ajouté : >>> --! import Prelude
+-- Cela permet :
+--      soit de ne pas charger du tout Prelude pour alléger la compilation
+--      soit de choisir un autre Prelude
+--      soit de compléter immédiatemement après par
 
-import Post exposing (Post, estimatedReadTime)
--- Post, estimatedReadTime
--- Post.Post, Post.estimatedReadTime, Post.encode, Post.decoder
+-- Le compilateur ajoute automatiquement un bloc de '--:' après 'import Prelude exposing ...'
+-- il y ajoute les noms de du Prélude masqués par les imports. Voici :
 
-import Post as P exposing (Post, estimatedReadTime)
--- Post, estimatedReadTime
--- P.Post, P.estimatedReadTime, P.encode, P.decoder
+import Prelude exposing (..) 
+--: hiding
+--:     ( Post      -- shadowed by @(l40c1-l40c11 >>> import Post)
+--:     , List      -- shadowed by @(l55c1-l55c16 >>> import Data.List)
+--:     )
+
+-- l'IDE crée des liens navigables (clic souris) sur les balise @(l00c00-l00c00 >>> première_ligne_du_code_pointé)
+-- C'est placé à cet endroit car cela caractérise le module et les imports. Les lignes et les colonnes commencent à 1.
+
+-- si on ajoute une requête de type '--:' derrière un import le compilateur indique les noms importés de manière ordonnée comme ci-après.
+-- L'IDE permet de tous les ajouter ou de tous les retirer via un menu contextuel sur tout mot-clef 'import'.
+
+--#-------------- package base ----------------           -- ajouté automatiquement suite à la directive --# show_packages
+
+import Prelude
 
 -- imports are always at the beginning of the file
 import Data.List 
 import Data.Array as A
 import Data.Maybe exposing (Maybe, maybe, withDefault, map, andThen)
 
+
+--#-------------- package post ----------------
+
+import Post
+--: -- Qualified types      >>> Post.Post, Post.Mail
+--: -- Qualified functions  >>> Post.estimatedReadTime, Post.encode, Post.decode  
+
+-- si le compilateur voir un import spécifiant des noms qualifiés qui n'existent pas à l'intérieur du module importé,
+-- alors il génère une erreur et propose :
+--      1/ supprimer la qualification si elle correspond au module importé
+--      2/ donne une liste des autres noms dont la graphie est proche avec un remplacement possible pour chacun (quand il y en a)
+--      3/ supprimer le nom exposé et de proposer d'exposer le même nom s'il le trouve dans d'autres modules
+
+-- exemple tiré de l'import ci-dessus qui pourrait être transformé facilement en joignant les deux lignes et en enlevant le '--!':
+-- >>> import Post exposing (Post.Post, Post.estimatedReadTime, Post.encode, Post.decoder)
+
+-- Le compilateur génère une erreur : 'Post.Post.estimatedReadTime' n'existe pas à l'intérieur du module 'Post'.
+-- le compilateur propose alors :
+--      1/ supprimer la qualification du nom exposé : remplacer 'Post.Post' par 'Post' (puisque 'Post' existe bien dans le module 'Post')
+--      2/ supprimer le nom
+-- et ainsi de suite pour les autres erreurs dans le 'exposing'
+
+
+import Post as P
+--: -- Qualified types      >>> P.Post, P.Mail
+--: -- Qualified functions  >>> P.estimatedReadTime, P.encode, P.decode  
+
+import Post exposing (Post, estimatedReadTime)
+--: exposing
+--:     ( Post                      -- Types
+--:     , estimatedReadTime         -- Functions
+--:     )
+--:     -- Qualified types      >>> Post.Mail
+--:     -- Qualified functions  >>> Post.encode, Post.decode  
+
+import Post as P exposing (Post, estimatedReadTime)
+--: exposing
+--:     ( Post                -- Types
+--:     , estimatedReadTime   -- Functions
+--:     )
+--:     -- Qualified types      >>> P.Mail
+--:     -- Qualified functions  >>> P.encode, P.decode
+
+
+--#-------------- current package ----------------
+
+import MyLib as M
+
+
+
 -- Haskell imports with keyword 'hiding' can be very convenient in some fast use cases
 -- >>> import Data.List exposing (..) hiding (map)
--- Attention cependant à son usage. Elm l'interdit par exemple. Il est préférable de s'en passer.
+
+-- Attention cependant à son usage. Elm l'interdit par exemple. Il est préférable de s'en passer sauf pour le Prelude.
 -- L'inconvéneient est qu'on ne voit pas explicitement de quel module est importé un nom, ce qui peut créer des quiproquo.
--- Si l'IDE est efficace, il proposera des actions pour déclarer les imports qui vont automatiser tout ce travail (comme le plugin Elm dans IntelliJ)
+-- L'IDE proposera des actions pour déclarer les imports qui vont automatiser tout ce travail (comme le plugin Elm dans IntelliJ)
+
+-- Les imports sont automatiquement réorganisés par le compilateur :
+-- 'import Prelude ...' est toujours le premier module importé (ou bien --! import Prelude)
+-- les modules sont triés entre eux par package d'origine :
+--          - en premier ceux de 'base'
+--          - puis les autres packages dans l'ordre du plus grand nombre d'utilisations des noms au sein du fichier
+--          - en dernier le package courant à qui appartient le module
+-- le package est indiqué avec un commentaire spécial par le compilateur si la directive '--# show_packages avec --#-------------- package ... ----------------
+-- Les modules importés d'un même package sont triés par nombre d'utilisation des noms (même sans 'exposing' ou 'as')
+-- Les noms exposés (avec 'exposing') dans un module sont triés par nombre d'utilisations des noms.
+
 
 
 -- IMPORT LOCAL
@@ -71,16 +162,48 @@ f k v =
 -- il serait prudent d'interdire les "shadowing" des alias (as) de modules.
 -- le "shadowing" de noms de fonctions doit rester cependant possible.
 
-
--- le commentaire '--:' en fin de ligne permet d'ajouter une annotation de type par le compilateur.
--- Si cette annotation a déjà été remplie, elle est vérifiée par le compilateur et mise à jour avec le type le plus général possible.
--- si on veut contraindre le type, alors il faut passer par une valeur intermédiaire dont on spécifiera le type
-
--- le commentaire --! permet d'annoter une ligne pour laquelle le compilateur renvoie un 
+-- L'import local n'est pas possible à l'intérieur d'un 'let ... in'
 
 
 
+------------------------
+-- COMMENTAIRES SPECIAUX
 
+--# pour une directive (rappel de plus haut)
+
+--: Annotation automatique de type par le compilateur
+
+-- le préfixe de commentaire '--:' est ajouté par l'utilisateur et ensuite rempli automatiquement par le compilateur.
+-- Tout changement de ce commentaire spécial par l'utilisateur sera écrasé par le compilateur
+-- L'IDE affiche des couleurs mettant en valeur le code, en reprenant les couleurs du code et en les estompant pour signaler qu'il n'est pas actif.
+-- Typiquement, le commentaire '--:' en fin de ligne permet d'ajouter une annotation de type par le compilateur.
+-- Avant une fonction le commentaire '--:' ajoute l'annotation de fonction avec le type le plus général possible
+--      et sans tenir compte de l'annotation de type déjà présente (car obligatoire pour les fonctions)
+
+
+--! Désactivation d'une action du compilateur
+
+-- le commentaire --! permet d'annoter une ligne pour laquelle le compilateur renvoie un avertissement. Cela désactive alors l'avertissement.
+-- A utiliser en connaissance de cause !
+-- Utilisé pour désactiver l'import obligatoire du module Prelude avec >>> --! import Prelude
+
+-- '' et "" et '>>>' (avec '--=' et '--:')
+-- 'cette valeur est du code' : il sera mis en valeur et sera clickable comme du code normal. Dans la documentation, ce code sera aussi clickable.
+-- "cette valeur est spéciale" : soit une chaîne de caractère, soit une commande ou tout autre chose qui doit être verbatim.
+-- >>> ce qui suit est du code
+-- si le code après '>>>' est une expression et est suivi de'--=', alors le compilateur l'exécutera et affichera le résultat. Utile pour inclure des tests
+-- si le code après '>>>' n'est pas une expression et est 
+-- cela sert pour illustrer ou pour les 
+
+--# test "Nom du test facultatif" >>> du_code_à_tester_qui_doit_être_égal_à_True
+-- le compilateur 
+
+
+--- Documentation
+-- '---' introduit une documentation pour :
+--      1/ générer de la documentation avec "lamb doc"
+--      2/ être reprise le compilateur pour générer ses messages d'erreur
+--      3/ être reprise par l'IDE pour ses messages et son aide à la complétion
 
 
 -- To begin, here are some type declarations
@@ -752,6 +875,14 @@ mkMeasure x m =
     -- x |> convert --! ne marcherait pas car convert ne peut pas changer les dimensions d'une quantité mais seulement les unités à l'intérieur d'une même dimension.
     -- x |> convert<m> --! non car ici il s'agit de mètres et non pas du paramètre de fonction m ?
     -- x |> convert m -- ok. Ici le mot-clef 'convert' est utilisé comme une fonction
+
+
+
+
+-- RAIL-ORIENTED PROGRAMMING AND FLOW
+
+
+
 
 
 
