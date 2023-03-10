@@ -842,7 +842,8 @@ faultable : IO () -> IO ()
 --| Unités : inspiration du F#
 -- Les unités ne sont utilisables que sur les Float, Double car basés sur des ratio et des multiplications/divisions nécessaires pour les conversions.
 -- Les nombres rationnels (Integral/Integral) ne sont pas possibles car ne permettent pas de gérer les unités avec des puissances décimales, comme la racine carrée : <m^0.5>
--- Ces unités sont utilisées entre chevrons, donc les majuscules comme les minuscules sont utilisables.
+-- Ces unités sont utilisées entre chevrons, donc les majuscules comme les minuscules sont utilisables en début de token.
+-- Les unités sont combinables avec ' ' pour la multiplication, ' /' pour la division et '^' pour la puissance.
 
 -- Mass, grams.
 measure type g
@@ -865,8 +866,10 @@ measure type ft
 measure type s
 
 -- Force, Newtons.
-measure type N = Kg m / s^2
-measure type N = m /s Kg /s -- identique
+measure type N = Kg m /s^2 -- mettre un point pour la multiplication ne sert à rien. Bonne pratique : '/' est préfixé d'une espace et '^' n'est entouré d'aucune.
+measure type N = m /s Kg /s -- identique. L'ordre ne compte pas
+measure type N = (m Kg) /(s)^(2) -- identique. On peut mettre des parenthèses
+measure type N = m Kg s^-2 -- identique. On peut mettre des puissances négatives, même sans parenthèses
 
 -- Pressure, bar.
 measure type bar
@@ -949,6 +952,143 @@ x2 = [| !x * !x |] -- ou une notation comme ça, voir Idris
 --| Gestion des threads
 -- un thread est un Worker qui se voit attribuer des Tasks
 -- Il peut exister plusieurs sortes de threads, dont certains seraient activés par défaut : UiWorker, GpuWorker, IoWorker, PureWorker
+
+
+
+-- COMPILATION
+-- inspiration notamment de Zig
+
+noRuntimeSafetyCheck : (a -> b) -> a -> b
+noRuntimeSafetyCheck f x =
+    f x
+
+tryWithRuntimeSafetyCheck : (a -> b) -> a -> b
+tryWithRuntimeSafetyCheck f x =
+    f x
+
+f : Array a -> Maybe a
+f? xs =
+    tryWithRuntimeSafetyCheck $ xs.[180]
+
+-- l'exemple est assez mauvais car on préfèrerait indiquer :
+xs : Array a
+xs.[180]  : a        -- opérateur avec runtime check -> déclenche un exception en cas de dépassement --# throw-exception IndexOutBounds
+xs.[180]? : Maybe a  -- opérateur safe avec contrôle de l'index 
+xs![180]  : a        -- opérateur unsafe sans contrôle de l'index -> plante de façon non contrôlée en cas de dépassement --# unsafe
+
+--# not-tail-recursive     -- s'il n'y a pas cette directive, cela déclenche un warning
+fibbonacci : Integer -> Integer
+fibbonacci =
+    \case 
+        n | n <= 0 -> 0
+        1          -> 1
+        n          -> fibbonacci (n - 1) + fibbonacci (n - 2)
+
+main =
+    fibbonacci 180 |> compileTime -- fibbonbacci est une fonction "pure" (ne dépendant pas d'une ressource), donc elle est appelable par compileTime
+                                  -- contrairement à ce que l'ordre des fonctions semble indiquer, compileTime englobe bien l'appel à fibbonacci
+
+-- de manière générale, si l'optimisation est activée, le compilateur poussera tous les calculs qu'il peut effectuer à la compilation.
+-- Comme cela peut être très long, il existe la fonction noCompileTime pour l'empêcher localement.
+
+main =
+    do  fd <- openFile "test.txt"
+        line <- getLine fd
+        closeFile fd
+        pure $
+            case line of
+                "Fibbo  please..." -> fibbonacci 180_000_000_000_000_000 |> noCompileTime
+                __________________ -> 0
+
+-- Lors de la super-compilation, le compilateur lance en parallèle les calculs sur les différentes branches de calcul indépendantes.
+-- A l'expiration d'un time-out, il indique quelles sont les fonctions trop longues à calculer.
+-- Si compileTime a été utilisé dans le code, alors il envoie un avertissement pour indiquer que le pré-calcul en cours prend trop de temps, mais sans l'interrompre.
+
+
+-- Déclenche une erreur ou un warning à la compilation
+compileError : String -> never
+
+compileWarning: String -> a -> a
+compileWarning msg data =
+      -- ici on génère un warning
+     data
+
+-- Utilisation
+f : Int -> Int
+if heavyComputation x == pb then -- heavyComputation sera calculé à la compilation si la fonction est pure pour savoir s'il faut déclencher l'erreur. Si la fonction est impure, un warning sera généré et toutes les compileError et compileWarning à l'intérieur du if (then ou else) ou du case seront déclenchés
+      compileError $ "Là on a un problème : " ++ pb --: never | never = Int
+else
+      x |> compileWarning "Tiens ! un avertissement..."
+
+
+
+
+
+
+
+
+
+
+-- EXCEPTIONS
+
+
+
+
+-- RÈGLES D'INDENTATION
+
+-- L'indentation est signifiante. En général, la modifier accidentellement rend le programme invalide. Quel est le niveau de risque ?
+-- il n'y a pas d'alternative aux retours à la ligne comme en Haskell ';'
+-- il n'y a pas d'alternative pour un bloc à l'indentation comme en Haskell '{' et '}'
+-- le 'where' (qui ouvre un nouveau bloc) n'est pas nécessaire
+
+-- Règle générale : on impose un retour à la ligne après :
+--      - une expression
+--      - une annotation de type
+--      - une fonction
+--      - un cas d'un 'case'
+--      - 'module ...'
+--      - 'import ...', y compris 'import ... in'
+--      - 
+--      - 
+--      - 
+-- Règles des blocs : un bloc est ouvert par
+--      - 'let' d'un 'let ... in'. Il s'arrête au 'in'
+--      - 'do'
+--      - '\case' (sans 'of' avant '->' ou '=>')
+--      - 'case ... of'
+--      - '\case ... of'
+--      - '(' jusqu'au prochain ')'
+--      - '{' jusqu'au prochain '}'
+--      - '[' jusqu'au prochain ']'
+
+-- Le bloc peut commencer sur la ligne courante (après le 'do' par exemple) sauf si retour à la ligne imposé 
+--      Dans ce cas, le bloc est indenté au même niveau que le début du bloc en milieu de première ligne
+
+
+
+
+
+--
+-- Coupure d'une ligne
+--      On peut couper une ligne entre deux tokens.
+--      La ligne se poursuit sur la ligne suivante avec une indentation supplémentaire
+--      
+--      Sauf si la 2e ligne commence par un opérateur infixe utilisé en position infixe (même niveau d'indentation)
+--          s'il y a plusieurs coupures avant des opérateurs (ils sont donc en début de ligne),
+--              alors on pourra expérimenter pour indenter les opérateurs qui sont plus prioritaires que le précédent
+--              et désindenter si l'opérateur est moins prioritaire que le précédent, mais sans jamais désindenter au-delà du niveau d'indentation de la première ligne
+--          
+--      et sauf si la coupure se trouve à l'intérieur de parenthèses, crochets, accolades :
+--          - si la ligne commence par une virgule ou le caractère fermant : la ligne n'est pas indentée
+--          - sinon on indente de 2 caractères
+--
+--      si coupure avant un 'in', le 'in' est indenté au même niveau que le 'let' précédent
+--      si coupure avant un 
+
+
+
+
+
 
 
 -- fin
