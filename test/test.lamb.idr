@@ -193,19 +193,27 @@ f k v =
 
 --: Annotation automatique de type par le compilateur
 
--- le préfixe de commentaire '--:' est ajouté par l'utilisateur et ensuite rempli automatiquement par le compilateur.
+
+--:: Annotation automatique de type par le compilateur
+-- la différence avec '--:' est que '--::' indique le type résultant de l'expression sur la ligne avec des noms complètement qualifiés
+-- (comme si les imports n'avaient pas mentionné de 'exposing' ou de 'as'
+
+-- le préfixe de commentaire '--:' ou '--::' est ajouté par l'utilisateur et ensuite rempli automatiquement par le compilateur.
 -- Tout changement de ce commentaire spécial par l'utilisateur sera écrasé par le compilateur
 -- L'IDE affiche des couleurs mettant en valeur le code, en reprenant les couleurs du code et en les estompant pour signaler qu'il n'est pas actif.
 -- Typiquement, le commentaire '--:' en fin de ligne permet d'ajouter une annotation de type par le compilateur.
 -- Avant une fonction le commentaire '--:' ajoute l'annotation de fonction avec le type le plus général possible
---      et sans tenir compte de l'annotation de type déjà présente (car obligatoire pour les fonctions)
+--      et sans tenir compte de l'annotation de type déjà présente (car obligatoire pour les fonctions) ... nécessité à discuter...
 
 
---! Désactivation d'une action du compilateur
+--! Désactivation d'une action du compilateur.
+
+-- le '!' fait référence à ATTENTION, c'est-à-dire se rapporte aux warnings du compilateur
 
 -- le commentaire --! permet d'annoter une ligne pour laquelle le compilateur renvoie un avertissement. Cela désactive alors l'avertissement.
 -- A utiliser en connaissance de cause !
 -- Utilisé pour désactiver l'import obligatoire du module Prelude avec >>> --! import Prelude
+-- Utilisable pour le c
 
 -- '' et "" et '>>>' (avec '--=' et '--:')
 -- 'cette valeur est du code' : il sera mis en valeur et sera clickable comme du code normal. Dans la documentation, ce code sera aussi clickable.
@@ -240,17 +248,57 @@ f k v =
 -- To begin, here are some type declarations
 -- order of declaration does not count
 
-type alias MyInt = Int
+
+
+-- Pb de déclaration de type.
+-- 3 choses différentes en Haskell.
+-- Comment faire pareil en Lamb mais avec une autre syntaxe ? 
+
+type AddressBook = List Entry
+newtype AddressBook = AddressBook (List Entry) 
+data AddressBook = AddressBook (List Entry) 
+
+-- Propositions : On peut remplacer le 'newtype' par
+-- NON RETENUS
+type AddressBook as List Entry -- non car implique un alias dans ses autres utilisations
+type AddressBook => List Entry -- non car ce n'est pas une implication. Peut porter à confusion avec les contraintes de types pour les haskellers
+type AddressBook | (List Entry) -- non car syntaxe retenue pour les contraintes de type en Lamb
+type AddressBook = List Entry -- non, car ne précise pas si List est un variant ou un type déjà existant.
+type AddressBook ~ List Entry -- Possible car indique bien que c'est presque la même chose. La même chose mais non échangeable. Attention à la syntaxe des contraintes de type pour plus tard...
+-- RETENU
+newtype AddressBook = List Entry -- au moins c'est clair.
+-- On peut toujours utiliser la fonctionnalité 'newtype' de Haskell avec type. Le compilateur fera le nécessaire pour éviter le boxing sur un variant unique
+type Dollard = Dollard Float -- mais dans ce cas il faut déconstruire la valeur pour utiliser le type encapsulé.
+
+addDollards : Dollard -> Dollard -> Dollard
+addDollards Dollard x, Dollard y = -- on peut utiliser la virgule pour éviter de parenthèser les termes >>> addDollards (Dollard x) (Dollard y) = ...
+    Dollard (x + y)
+
+-- On pourrait aussi avoir
+instance Functor Dollard
+    map f (Dollard x) = Dollard (f x)
+    map2 f (Dollard x) (Dollard y) = Dollard (f x y)
+
+addDollards : Dollard -> Dollard -> Dollard
+addDollards = map2 (+)
+
+-- Un pur alias. Aucune différence avec un Int, seulement un autre nom pour être plus clair ou pour faire évoluer MyInt avec un autre type
+type alias Id = String -- on pourra le remplacer par Int plus tard sans changer les signatures de fonctions. Le compilateur indiquera les modifications à effectuer sur place.
 
 -- (Int, String, Char) is a valid type declaration itself
 type alias MyTuple = (Int, String, Char)
 
--- you need a type constructor to create a polymorphic type (cette nécessité est à vérifier...)
-type MyTuple a = MyTuple (Int, String, a)
+-- you need a type constructor to create a polymorphic type in Haskell
+type MyTuplePoly a = MyTuple (Int, String, a)
+
+-- Mais ce n'est pas nécessaire en Lamb. C'est au compilateur de fournir le travail pour l'utilisateur
+-- on peut aussi y ajouter des contraintes de type
+type MyTuplePoly2 a b = (Int, b, a)   | (Integral a, Functor b)
 
 -- some value declarations to illustrate type constructor
-tuple1 = MyTuple (1, "test", 158) --: MyTuple Int
-tuple2 = MyTuple 100 "test" "ccc" --: MyTuple String
+tuple1 = 
+tuple1 = MyTuplePoly (1, "test", 158) --: MyTuple Int
+tuple2 = MyTuplePoly 100 "test" "ccc" --: MyTuple String
 
 type alias MyRecord = 
     { x: Int
@@ -349,7 +397,7 @@ withDefault =
 -- Possible avec '->' uniquement si un seul argument. Si plusieurs arguments, le compilateur fera une erreur et proposera de réécrire les cas avec '=>' au lieu de '->'
 add1 : Maybe Int -> Maybe Int
 add1 =
-    \case x? -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
+    \case x? of -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
         Nothing -> Nothing
         Just x  -> Just (x + 1)
     -- ok c'est exemple est vraiment artificiel. On aurait pu remplacer la Lambda par : 'Maybe.map (_ + 1)'
@@ -358,26 +406,26 @@ add1 =
 withDefault : Maybe a -> a -> a
 withDefault =
     \case -- il s'agit d'une lambda qui envoie tous ses paramètres dans un case
-        Nothing, default => default -- on note les virgule pour séparer les cas
-        Just x,  _       => x       -- on aurait pu ajouter des annotation de type et des substitutions ('as' ou '@')
+        Nothing, default -> default -- on note les virgule pour séparer les cas
+        Just x,  _       -> x       -- on aurait pu ajouter des annotation de type et des substitutions ('as' ou '@')
 
 -- QUATRIÈME BIS : avec un nom utile pour la documentation de la lambda
 withDefault : Maybe a -> a -> a
 withDefault =
-    \case x?, default               -- facultatif : les arguments de la lambda sont nommés et séparés par des virgules. Cela documente la lambda et peut servir pour la complétion de l'IDE
-        Nothing, default => default -- l'IDE peut maintenant proposer ce cas automatiquement. Les noms dans les cas doivent correspondre exactement à ceux du \case ("shadowing" interdit)
-        Just x,  _______ => x       -- l'IDE aura d'abord proposé le cas 'Just x, default =>'. Le compilateur proposera une fois la ligne complète de remplacer 'default' par '_' car non utilisé à droite.
-    -- formatage : les arguments, les '->' et les '=>' sont alignés verticalement. Si ce n'est pas possible, on passe au formatage de type Elm comme ci-dessous
+    \case x?, default of            -- facultatif : les arguments de la lambda sont nommés et séparés par des virgules. Cela documente la lambda et peut servir pour la complétion de l'IDE
+        Nothing, default -> default -- l'IDE peut maintenant proposer ce cas automatiquement. Les noms dans les cas doivent correspondre exactement à ceux du \case ("shadowing" interdit)
+        Just x,  ______  -> x       -- l'IDE aura d'abord proposé le cas 'Just x, default ->'. Le compilateur proposera une fois la ligne complète de remplacer 'default' par '_' car non utilisé à droite.
+    -- formatage : les arguments, les '->' sont alignés verticalement. Si ce n'est pas possible, on passe au formatage de type Elm comme ci-dessous
     -- Pour faciliter le formatage, le '_' peut compter autant '_' que nécessaire.
     
 -- QUATRIÈME TER : idem avec formatage sur plusieurs lignes comme en Elm.
 withDefault : Maybe a -> a -> a
 withDefault =
-    \case x?, default 
-        Nothing, default =>
+    \case x?, default of
+        Nothing, default ->
             default -- avec un retrait car continuation de la ligne précédente
 
-        Just x, _ => -- pas d'alignement des arguments et du '=>'
+        Just x, _ -> -- pas d'alignement des arguments et du '=>'
             x     
 
 
@@ -385,7 +433,7 @@ withDefault =
 --- Les LAMBDAS
 -- Il y a plusieurs possibilités à évaluer
 f = \x -> x + 1 -- Comme Haskell et Elm. Les parenthèses ne sont pas obligatoires
-f = (\x -> x + 1) -- Idem mais avec des parenthèses obligatoires. Est-ce vraiment nécessaire ? non sauf si pose un problème dans le contexte.
+f = (\x -> x + 1) -- Idem mais avec des parenthèses. Est-ce vraiment nécessaire ? non sauf si pose un problème dans le contexte.
 f =
     \x ->
         x + 1
@@ -401,14 +449,14 @@ f =
 
 -- ou bien
 f =
-    \x, y => x + y + 1 -- comme en Idris bien qu'ici inutile. Sert à ajouter des annotations de type ou des 'as'. Il ne s'agit pas du tuple (x,y)
+    \x, y -> x + y + 1 -- comme en Idris bien qu'ici inutile. Sert à ajouter des annotations de type ou des 'as'. Il ne s'agit pas du tuple (x,y) car le tuple est obligatoirement entouré de parenthèses
+g = 
+    \x: Int, y:Int -> x + y + 1  -- lla virgule permet de séparer les paramètres et d'éviter les virgules pour les annotations de type inline.
+
 
 -- petit piège :
 f =
-    \(x, y) => x + y + 1 -- la lambda n'a qu'un argument, le tupe '(x,y)'. On le voit grâce aux parenthèses.
-    
-    -- pour éviter l'équivoque, le compilateur doit refuser la notation avec '=>' quand il n'y a qu'un argument et proposer '->' à la place :
-    \(x, y) -> x + y + 1 -- Ouf c'est plus clair !
+    \(x, y) -> x + y + 1 -- la lambda n'a qu'un argument, le tuple '(x,y)'. On le voit grâce aux parenthèses.
 
 
 -- ou bien
@@ -416,11 +464,13 @@ f =
     \x: Number, y: Number => x + y + 1 : Number
     
     -- Bien noter ici que l'espace avant le dernier':' indique qu'il concerne toute l'expression
-    -- cela équivaut à '\x: Number, y: Number => (x + y + 1): Number'
+    -- cela équivaut à 
+    \x: Number, y: Number -> (x + y + 1): Number
     -- Le formatage suivant est aussi possible pour plus de clarté
-    --      '\x: Number, y: Number =>
-    --                                x + y + 1
-    --                                : Number'     -- on note l'alignement de l'indentation, qui est un peu une exception, donc à tester dans le cas limites...
+    \x: Number, y: Number ->
+        x + y + 1
+        : Number'     -- on note l'alignement de l'indentation, qui est un peu une exception, donc à tester dans le cas limites...
+
     -- cette notation est très logique et doit donc être possible par cohérence au sein du langage
     -- mais en pratique elle n'est pas très utile donc à réserver aux cas où elle clarifie les choses
     -- elle pourra être supprimée si elle n'apporte rien au final, par simplicité.
@@ -433,9 +483,28 @@ f =
 
 
 
+-- Il existe aussi un raccourci pour les lambdas : principalement utilisé avec les opérateurs
+add10 = (_ + 10)
+-- les parenthèses sont obligatoires, il n'y a pas de '\' en préfixe
+
+-- Ca marche aussi avec les fonctions
+flip f x y = f y x -- pour mémoire
+
+(_ + 10) |> (map _ [1, 2, 3])
+-- au lieu d'utiliser flip qui est moins clair
+(_ + 10) |> flip map $ [1, 2, 3]
+-- bien sûr l'exemple est tiré par les cheveux : il aurait fallu écrire plus iodimatiquement
+[1, 2, 3] |$> (_ + 10)
+
 -- TUPLES
 -- Comme en Haskell, on a les opérateurs suivants : '(,)' '(,,)' '(,,,)' etc.
--- Le tuple est obligatoirement entouré de parenthèses, ça facilite le parsing, évite les erreurs
+-- Le tuple est obligatoirement entouré de parenthèses, ça facilite le parsing et évite des équivoques comme
+\x, y -> x + y -- 
+1, 2, 3, 4   -- tuple sans parenthèses qui aurait pu représenter d'autres combinaisons de tuples.
+(1, (2, 3), 4)
+(1, (2, (3, 4)))
+(((1, 2), 3), 4)
+(1, 2, 3, 4)  
 
 (,): a -> b -> (a, b)
 (,) x y = (x, y) -- fonction écrite en préfixe
@@ -447,7 +516,7 @@ x (,) y = (x, y)
 -- Mais cela signifie alors qu'un opérateur peut inclure des parenthèses, ce qui pose d'autres problèmes de parsing.
 
 -- La bonne pratique, comme en Elm, est de ne pas utiliser les tuples au-delà de trois éléments.
--- Au-delà de trois éléments, il est possible
+-- Au-delà de trois éléments, il est recommandé d'utiliser un record, anonyme ou non.
 
 
 
@@ -456,9 +525,9 @@ x (,) y = (x, y)
 f: Number
 f =
     \case
-        Nothing, i => (Nothing, ())
-        (Just x), i -> x + i
-
+        Nothing       , i -> Nothing
+        (Just x) as x?, i -> x? |$> ( _ + x + i) -- == 2x+i
+-- cela remplace le '@' de Haskell, dont la lecture n'est pas intuitive.
 
 
 --- Les GUARDS
@@ -466,25 +535,54 @@ f =
 -- à la base, nous avons la cascade de 'if else'  : 'if _ then ... else if _ then ... else if _ then ... else ....'
 -- c'est la construction la plus simple.
 f x y = 
-    if 
+    if p1 then
+        r1
+    else if p2 then
+        r2
+    else
+        r3
 
--- En Haskell. Pas toujours lisible je trouve.
+-- avec des guards à la Haskell (c'est le 'when' de Ocaml)
+f x y
+    | p1 = r1
+    | p2 = r2
+    | p3 = r3
+-- franchement cette notation manque de clarté avec les '=' je trouve
+-- autorisé mais générera un avertissement à la compilation avec des propositions du compilateur.
+
+-- avec un if, c'est plus clair, notamment grâce aux flèches
+f x y =
+    if | p1 -> r1
+       | p2 -> r2
+       | p3 -> r3
+
+-- on peut aussi en insérer dans les case
+f x? y =
+    let
+        limit = y / 3
+    in
+        case x? of
+            Nothing            -> "pb"
+            Just x | x > limit -> "ok"
+                   | otherwise -> "trop faible" -- la bonne indentation des guards est nécessaire (alignement des '|')
+
+
+-- En Haskell. Pas toujours lisible. Exemple :
 bmiTell :: (RealFloat a) => a -> a -> String -> String  
 bmiTell weight height name  
     | bmi <= skinny = n ++ ", You're underweight, you emo, you!"  
     | bmi <= normal = n ++ ", You're supposedly normal. Pffft, I bet you're ugly!"  
     | bmi <= fat    = n ++ ", You're fat! Lose some weight, fatty!"  
     | otherwise     = n ++ ", You're a whale, congratulations!"  
-    where bmi = weight / height ^ 2  -- impossible de mettre un 'let ... in' dans cette construction.
+    where bmi = weight / height ^ 2  -- impossible de mettre un 'let ... in' dans cette construction. C'est un autre problème des guards de fonctions
           skinny = 18.5  
           (normal, fat) = (25.0, 30.0)  
           (n:_) = name  -- au passage on observe le pattern matching sur le type avec '_'. Est-ce utile ? Ne faut-il pas au contraire l'interdire ?
-                        -- utile uniquement si c'est un type hole.
+                        -- utile uniquement si c'est un type hole mais il faudra l'écrire autrement.
 
 
 
-
--- voici la syntaxe 'il let .... else ...' en Rust.
+-- voici la syntaxe 'if let .... else ...' en Rust.
  // If you need to specify a failure, use an else:
     if let Some(i) = letter {
         println!("Matched {:?}!", i);
@@ -492,17 +590,22 @@ bmiTell weight height name
         // Destructure failed. Change to the failure case.
         println!("Didn't match a number. Let's go with a letter!");
     }
--- Il    
 
+-- Je garde en tête le '|' utilisé comme une notation en cas d'erreur dans les 'do' en Idris
+f file =  do
+    content <- readFile file
+        | "il y a eu un pb à la lecture du fichier" -- et la fonction s'arrête net
+    ...
+    -- c'est à recreuser dans IDRIS car mon exemple est mauvais.
 
 
 
 --- HOLES
 -- '?Aaaa' est un "type hole", qui remplace un type (ou un nom de module ?)
 -- '?aaaa' est un "typed hole", qui remplace une valeur, une fonction ou un constructeur (de valeur)
--- '?_' est un "anonymous hole", qui remplace soit une valeur soit un type. Ce "trou" n'est pas nommé.
+-- '?_' ou '?' est un "anonymous hole", qui remplace soit une valeur soit un type. Ce "trou" n'est pas nommé.
 
--- A la compilation, le compilateur remplace les "trous de type anonymes" (?_) par le type le plus général possible (éventuellement avec contraintes)
+-- A la compilation, le compilateur remplace les "trous de type anonymes" (?_ ou ?) par le type le plus général possible (éventuellement avec contraintes)
 -- Les trous de valeur (ou de fonction ou de constructeur) sont toujours proposés au choix car il existe probablement une infinités de solutions
 -- Les propositions sont triées en fonction du contexte (il est logique d'utiliser les valeurs présentes dans le contexte) et
 -- aussi en fonction de leur simplicité (une seule fonction si possible, avec des arguments disponbibles dans le contexte)...
@@ -525,16 +628,18 @@ fCase : Maybe a -> a
 fCase x? = -- remplacement proposé de x en x? à cause de son type
     case x? of -- remplacement de ?x par x?
         Nothing -> ?aNothing -- les cas sont déroulés par le compilateurs et le code inconnu est complété par des trous.
-        Just x -> ?x
+        Just x -> ?aJustX
 
 
 
 --| For later: a GADT. Avant de se lancer là-dedans, il faudrait bien réfléchir car complique fortement...
-type Expr a : Num a => Type
-    ExprInt Int       : Int -> Expr
-    ExprAdd Expr Expr : Expr -> Expr -> Expr
-    ExprScale Int Expr: Int -> Expr -> Expr
-    deriving (Eq, Ord, Enum, Bounded, Show, Read) -- default instance provided for these interfaces
+type Expr a : Num a -> Type
+
+     ExprInt Int       : Int -> Expr
+     ExprAdd Expr Expr : Expr -> Expr -> Expr
+     ExprScale Int Expr: Int -> Expr -> Expr
+
+     deriving (Eq, Ord, Enum, Bounded, Show, Read) -- default instance provided for these interfaces
 
 
 --| A typeclass
@@ -543,19 +648,32 @@ interface Show a -- 'interface' en Idris, 'class' en Haskell. On peut faire saut
     -- with default implementation
     show x = "Not yet implemented"
 
-interface (Integral a) <= Addable a -- comme en Purescript, l'opérateur est dans ce sens pour respecter le sens de l'implication. 
-                                    -- on ajoute des parenthèses sur la contrainte de type pour mettre en valeur le nom de l'interface
+interface Addable a    | (Integral a)   -- on ajoute des parenthèses sur la contrainte de type pour mettre en valeur le nom de l'interface
     one : a                         
     inc : a -> a
     decAbs : a -> a
     add : a -> a -> a
+
+    -- règles de simplification pour l'optimisation
+    inc .> decAbs ==> identity
+    decAbs .> inc ==> identity
+    -- les lois peuvent aussi être ajoutées ici sous une forme exploitable.
+
     -- with default implementation : dans cet exemple elles sont mutuellement récursives. L'instance devra donc fournir au moins l'une des deux.
     inc x = add x one
     add x y = 
         case x of
             0 -> y
             x -> add (decAbs x) (inc y) -- tail recursive!
-    
+            
+
+-- Voici d'autres règles de simplification pour d'autres interface, en vrac :
+guard p1 >>= guard p2 ==> guard (p1 && p2)
+map f1 .> map f2 ==> map (f1 .> f2)
+map f .> filter p ==> filterMap f p -- filterMap doit être implémentée dans les instances de l'interface, mais ne peut être utilisé il faut donc un mot-clef pour l'inhiber ('private', '--# no-use' ?)
+fold ==> foldl -- si c'est une tableau strict, foldr sinon.
+
+
 
 -- FONCTIONS RECURSIVES
 
@@ -566,14 +684,49 @@ interface (Integral a) <= Addable a -- comme en Purescript, l'opérateur est dan
 
 -- CONTRAINTES DE TYPE
 
--- sur les contraintes de type on peut aussi imaginer qu'elles soient indiquées après
-interface Addable a => (Integral a, Eq a) -- plus clair à lire, sauf pour ceux qui ont l'habitude d'Haskell
+-- En Idris (ou Haskell avec le mot-clef 'class')
+interface  (Integral a, Eq a) => Addable a
 
--- ou bien encore plus clair :
+f : (Integral a) => a -> Maybe a
+-- on a un problème : on aimerait le type de l'interface, ou de la fonction soit en premier
+
+--  on peut donc imaginer que les contraintes de type soient indiquées après
+interface Addable a => (Integral a, Eq a) -- plus clair à lire, sauf pour ceux qui ont l'habitude d'Haskell et de Purescript
+
+-- Les gens qui utilisent le langage travailleront sans doute avec Haskell ou Purescript à côté.
+-- Inverser la notation bien ancrée d'Haskelle va leur faire bouillir le cerveau à chaque switch de langage.
+
+-- il vaut mieux utiliser '|', qui peut se lire "sachant que" et reste compréhensible en langage mathématique classique, en probabilité,
+-- est très cohérent avec les "list comprehensions" et la syntaxe des guards et celle de mise à jour des records
+
+-- on met quelques espaces avant le '|' au formatage (non obligatoire) et on oblige à mettre des parenthèses
+interface Addable a    | (Integral a, Eq a)  
+f : a -> Maybe a   | (Integral a)
+
+-- ou bien également assez clair pour les interfaces
 interface Addable a
-    => (Integral a, Eq a)
+    | (Integral a, Eq a)
+
+    add : a -> a -> a
+    add x y = x + y
+
+    incr : a -> A
+    incr x = x + 1
+
+
+-- il peut parfois être nécessaire d'indiquer que certaines variables de type sont libres, avec forall
+interface Addable a    | forall a. (Integral a, Eq a) 
+
+f : a -> Maybe a   | forall a. (Integral a)
+g : a -> a   | forall a  -- si rien après le forall, alors pas de point séparateur et pas de parenthèses vides.
+-- le forall est facultatif quand il n'est pas nécessaire (cas très rare à ma connaissance)
+
+reduce : (a -> a -> a) -> f a -> a   | (Foldable f, NonEmpty f, Number a) 
+
+
 
 -- attention à la cohérence avec les autres endroits où on peut placer des contraintes de types.
+
 
 
 --| Instances declarations are terse in Idris (no keyword)
@@ -666,7 +819,7 @@ oneVect = [1, 2, 3] --: Vect Int
 oneList : List Char
 oneList = ['a', 'b']
 
--- ou encore, mais utile hors lambdas ?
+-- ou encore, mais utile hors lambdas ? Ce n'est pas idiomatique. Un avertissement proposera de le passer en ligne d'annotation si c'est possible
 oneList = ['a', 'b'] : List Char
 
 -- type constraint provided by the caller signature
@@ -846,30 +999,33 @@ faultable : IO () -> IO ()
 -- Les unités sont combinables avec ' ' pour la multiplication, ' /' pour la division et '^' pour la puissance.
 
 -- Mass, grams.
-measure type g
+measure g   --: measure g
 -- Mass, kilograms.
-measure type Kg
+measure Kg
 -- Weight, pounds.
-measure type lb
+measure lb
 
 -- Distance, meters.
-measure type m
+measure m
 -- Distance, cm
-measure type cm
+measure cm
 
 -- Distance, inches.
-measure type inch
+measure inch
 -- Distance, feet
-measure type ft
+measure ft
 
 -- Time, seconds.
-measure type s
+measure s
 
 -- Force, Newtons.
-measure type N = Kg m /s^2 -- mettre un point pour la multiplication ne sert à rien. Bonne pratique : '/' est préfixé d'une espace et '^' n'est entouré d'aucune.
-measure type N = m /s Kg /s -- identique. L'ordre ne compte pas
-measure type N = (m Kg) /(s)^(2) -- identique. On peut mettre des parenthèses
-measure type N = m Kg s^-2 -- identique. On peut mettre des puissances négatives, même sans parenthèses
+measure N  = Kg m /s^2 -- mettre un point pour la multiplication ne sert à rien. Bonne pratique : '/' est préfixé d'une espace et '^' n'est entouré d'aucune.
+measure N1 = m /s Kg /s -- identique. L'ordre ne compte pas
+measure N2 = (m Kg) /(s)^(2) -- identique. On peut mettre des parenthèses autour des sous-expressions. Utile pour la lisibilité 
+measure N3 = m Kg s^-2 -- identique. On peut mettre des puissances négatives, même sans parenthèses
+
+measure testParen = (Kg m) / (N^2 s) -- parenthèses pour mettre sous la forme "numérateur / (termes du dénominateur)". C'est une possibilité libre.
+
 
 -- Pressure, bar.
 measure type bar
@@ -882,12 +1038,12 @@ measure type mL
 measure type L
 
 -- Define conversion constants. Introduction du mot-clef convert
-convert 1000.0<g/Kg>
+convert 1_000.0<g/Kg>
 convert 100.0<cm/m>
 convert 2.54<cm/inch>
 convert 1.0<ml/cm^3>
-convert 1000.0<ml/L>
-convert 1024<mPa/bar>
+convert 1_000.0<ml/L>
+convert 1_024<mPa/bar>
 
 -- Pour visualiser correctement les rapports, le compilateur pourra offrir une vue en tableau ou en graphe
 
@@ -895,7 +1051,7 @@ convert 1024<mPa/bar>
 -- en effet, cela peut introduire des erreurs dans les calculs
 convert 100.0<cm/m>     -- ok
 convert 2.54<cm/inch>   -- ok
-convert 5646516<inch/m) -- pb! Création d'un cycle
+convert 5_646_516<inch/m> -- pb! Création d'un cycle
 
 -- avec cette notation déclarative, les rapports de conversion sont constants et ne peuvent être redéfinis au cours de l'exécution d'un programme.
 -- les monnaies ne peuvent donc être modélisés par ce biais.
@@ -916,24 +1072,72 @@ g = 1.901<m/s^2> |> convert
 -- Une unité de mesure est une classe de types bien particulière
 -- On doit pouvoir construire une valeur avec une unité
 -- cette fonction n'est pas nécessaire dans Prelude.Measures
-mkMeasure : Float -> Measure -> Float<Measure> -- cette fonction fait appel dans son corps à des primitives
+-- on est déjà sur de la programmation de type : on passe un type en paramètre d'une fonction !
+mkMeasure :  measure a -> Float -> Float<Measure a> -- cette fonction fait appel dans son corps à la primitive convert
 mkMeasure x m =
     -- x |> convert --! ne marcherait pas car convert ne peut pas changer les dimensions d'une quantité mais seulement les unités à l'intérieur d'une même dimension.
     -- x |> convert<m> --! non car ici il s'agit de mètres et non pas du paramètre de fonction m ?
-    -- x |> convert m -- ok. Ici le mot-clef 'convert' est utilisé comme une fonction
+    -- x<m>   --! non car 'm' est une mesure en mètre et non pas le paramètre de la fonction 'm'.
+       x |> convert m -- ok. Ici le mot-clef 'convert' est utilisé comme une fonction pour forcer le type de la mesure résultante.
+
+-- les fonctions primitives qui sont derrière le mot-clef 'convert' sont les suivantes :
+-- ARITÉ 1
+convert : Float<measure a> -> Float<measure b> | forall a b. (a ~ b) -- signifie que a et b sont compatibles donc peuvent décrire une même quantité.
+
+-- ARITÉ 2
+convert : measure a -> Float<measure b> -> Float<measure a>   
+convert : measure a -> Float            -> Float<measure a>    -- si Float<1> /== Float
 
 
 
+-- STYLE, IDIOMATICS
+
+--
 
 -- RAIL-ORIENTED PROGRAMMING AND FLOW
+-- référence : https://fsharpforfunandprofit.com/rop/
+
+-- Ce style est idiomatique et recherché. Il consiste à chaîner les fonctions.
+-- Il a été institué par l'opérateur '|>' de F# et de Elm
+-- Haskell utilise cet ordre-là pour les monades avec '>>=' ou même dans les do-notations.
+
+-- le problème d'Haskell est que la lecture des fonctions se fait tantôt de droite à gauche, tantôt l'inverse
+-- ce qui pose un gros problème de cohérence et de clarté du code.
+-- la plupart des opérateurs haskell sont définis dans une logique de fonction mathématique utilisée de manière préfixe
+-- En Haskell, la composition est '.', l'application est '$', le map est '<$>', etc.
+
+-- En Lamb, on est sur un langage qui veut être plus lisible qu'Haskell et valoriser les transformations successives de valeurs
+-- C'est d'autant plus cohérent que Lamb est non-paresseux (eager evaluation)
+
+-- En réalité chaque opérateur peut fonctionner dans un pipe, il est logique qu'ils soient pour la plupart disponibles sous deux formes : left-to-right et right-to-left
+-- 
+-- On peut indiquer dans les fonctions
+
+-- Opérateurs de Functor
+-- 'map' (et non pas 'fmap'), '<$|' à la place de '<$>', et la version pipe à privilégier : '|$>'
+-- Pour les opérateurs de pipe, on aurait : '|>' et l'inverse serait '$' (et non pas '<|') car le sens de '$' (application) se retrouve dans les autres opérateurs dérivés.
+
+-- La composition serait :
+-- Haskell : '.'
+-- Elm et F# : '<<' et '>>'
+-- Purescript : '<<<' et '>>>'
+-- Flow : '.>' et '<.'     A PRIVILEGIER. Va dépendre de la disponibilité des autres opérateurs en fonctions des bibliothèques déjà existantes.
+
+-- Refactoring automatique : avertissement du compilateur
+foo : a-> b
+bar : c-> d
+foo $ bar x y -- À refactorer en :
+foo (bar x) y
 
 
-
-
-
+-- Nommage valeurs
+-- Une valeur qui renvoie un Bool doit se commencer par "is" oue se terminer par "?"
+-- Une valeur qui renvoie une alternative doit se terminer par "?". Cela concerne les Bool (sauf si commence par "is"), le Result err ok, le Maybe a... 
 
 --- VALEURS REACTIVES
 -- fonctionnalité du langage avec mots-clefs ou primitives, ou bien simple module ?
+
+type React a = R a
 
 x : React Int
 x = R 10
@@ -941,9 +1145,11 @@ x = R 10
 x2 : React Int
 x2 = [| !x * !x |] -- ou une notation comme ça, voir Idris
 
+show x2 => "x * x"
+
 -- Doit fonctionner avec les Effets comme Idris : Gestion du STATE
 -- la gestion du graphe sous-jacent est fournie par le compilateur
--- il faudrait aussi avoir une capacité d'introspection en donnant accès au graphe mais pas facile
+-- il faudrait aussi avoir une capacité d'introspection en donnant accès au graphe mais pas facile...
 -- on doit aussi pouvoir modifier les "formules" depuis l'IO sous forme de String puis les "compiler",
 -- pas facile...
 
@@ -976,6 +1182,17 @@ xs.[180]  : a        -- opérateur avec runtime check -> déclenche un exception
 xs.[180]? : Maybe a  -- opérateur safe avec contrôle de l'index 
 xs![180]  : a        -- opérateur unsafe sans contrôle de l'index -> plante de façon non contrôlée en cas de dépassement --# unsafe
 
+
+-- Warning tail-recursive ! 
+
+-- Le compilateur indique les fonctions récursives non tail-recursive avec un avertissement "not-tail-recursive". 
+-- Le compilateur propose alors : 
+--      1/ une ré-écriture tail-récursive si elle triviale
+--      2/ désactiver le warning avec '--# not-tail-recursive'
+--      3/ désactiver et ajouter un TODO avec '--TODO Need to be rewritten as tail-recursive'
+-- Le compilateur ajoute un commentaire '--- tail-recursive' automatique dans la fonction d'appel (même si la vraie fonction récursive est cachée dans un 'let ... in').
+-- Une fonction qui travaille sur un argument 'f a | Foldable f' et qui est tail-recursive peut être remplacée par un fold. Dans ce cas, émettre un warning
+
 --# not-tail-recursive     -- s'il n'y a pas cette directive, cela déclenche un warning
 fibbonacci : Integer -> Integer
 fibbonacci =
@@ -983,14 +1200,14 @@ fibbonacci =
         n | n <= 0 -> 0
         1          -> 1
         n          -> fibbonacci (n - 1) + fibbonacci (n - 2)
-
+        
 main =
     fibbonacci 180 |> compileTime -- fibbonbacci est une fonction "pure" (ne dépendant pas d'une ressource), donc elle est appelable par compileTime
-                                  -- contrairement à ce que l'ordre des fonctions semble indiquer, compileTime englobe bien l'appel à fibbonacci
-
--- de manière générale, si l'optimisation est activée, le compilateur poussera tous les calculs qu'il peut effectuer à la compilation.
--- Comme cela peut être très long, il existe la fonction noCompileTime pour l'empêcher localement.
-
+    -- contrairement à ce que l'ordre des fonctions semble indiquer, compileTime englobe bien l'appel à fibbonacci
+    
+    -- de manière générale, si l'optimisation est activée, le compilateur poussera tous les calculs qu'il peut effectuer à la compilation.
+    -- Comme cela peut être très long, il existe la fonction noCompileTime pour l'empêcher localement.
+            
 main =
     do  fd <- openFile "test.txt"
         line <- getLine fd
@@ -998,11 +1215,14 @@ main =
         pure $
             case line of
                 "Fibbo  please..." -> fibbonacci 180_000_000_000_000_000 |> noCompileTime
-                __________________ -> 0
-
+                _________________  -> 0
+                
 -- Lors de la super-compilation, le compilateur lance en parallèle les calculs sur les différentes branches de calcul indépendantes.
 -- A l'expiration d'un time-out, il indique quelles sont les fonctions trop longues à calculer.
 -- Si compileTime a été utilisé dans le code, alors il envoie un avertissement pour indiquer que le pré-calcul en cours prend trop de temps, mais sans l'interrompre.
+
+-- noCompileTime pourra être utile pour éviter de calculer des valeurs d'initialisation pour un gigantesque tableau qui ne serait pas totalement utilisé par la suite.
+-- En théorie un tel tableau devrait être un 'Coll (Lazy a)', voire être un 'Seq a'. Mais bon des contraintes liées à Lazy peuvent faire préférer de ne pas mettre de Lazy.
 
 
 -- Déclenche une erreur ou un warning à la compilation
@@ -1010,25 +1230,43 @@ compileError : String -> never
 
 compileWarning: String -> a -> a
 compileWarning msg data =
-      -- ici on génère un warning
-     data
+    -- ici on génère un warning
+    data
+    
+    -- Utilisation
+    f : Int -> Int
+    if heavyComputation x == pb then -- heavyComputation sera calculé à la compilation si la fonction est pure pour savoir s'il faut déclencher l'erreur. Si la fonction est impure, un warning sera généré et toutes les compileError et compileWarning à l'intérieur du if (then ou else) ou du case seront déclenchés
+        compileError $ "Là on a un problème grave : " ++ pb --: never | never = Int
+        else
+            x |> compileWarning "Tiens ! un avertissement, faut quand même le signaler..."
+            
+            
+-- OPTIMISATIONS
+-- Une fonction qui contient un fold doit être inlinée pour permettre l'optimisation des 'fold', des 'map', des 'filter', des 'zip' successifs (à vérifier).
+-- Faut-il une directive pour permettre cette optimisation ?
+-- A creuser en théorie. Regarder le papier sur la méta-compilation
 
--- Utilisation
-f : Int -> Int
-if heavyComputation x == pb then -- heavyComputation sera calculé à la compilation si la fonction est pure pour savoir s'il faut déclencher l'erreur. Si la fonction est impure, un warning sera généré et toutes les compileError et compileWarning à l'intérieur du if (then ou else) ou du case seront déclenchés
-      compileError $ "Là on a un problème : " ++ pb --: never | never = Int
-else
-      x |> compileWarning "Tiens ! un avertissement..."
+-- exemple
+--# inline-caller
+foldl : (a -> b -> a) -> a -> Coll b -> a
+foldl folder acc collection = ...
 
-
-
-
-
-
-
-
-
-
+f x xs =
+    xs
+    |> fold ...
+    |> filter ...
+    |> map ...
+    |> map ...
+    |> fold ...
+    |> reduce ... -- ne short-circuit pas, donc privilégier autre chose...
+            
+         
+    
+            
+            
+            
+            
+            
 -- EXCEPTIONS
 
 
@@ -1054,7 +1292,7 @@ else
 -- Règles des blocs : un bloc est ouvert par
 --      - 'let' d'un 'let ... in'. Il s'arrête au 'in'
 --      - 'do'
---      - '\case' (sans 'of' avant '->' ou '=>')
+--      - '\case' (sans 'of' avant '->')
 --      - 'case ... of'
 --      - '\case ... of'
 --      - '(' jusqu'au prochain ')'
@@ -1073,17 +1311,38 @@ else
 --      On peut couper une ligne entre deux tokens.
 --      La ligne se poursuit sur la ligne suivante avec une indentation supplémentaire
 --      
---      Sauf si la 2e ligne commence par un opérateur infixe utilisé en position infixe (même niveau d'indentation)
---          s'il y a plusieurs coupures avant des opérateurs (ils sont donc en début de ligne),
---              alors on pourra expérimenter pour indenter les opérateurs qui sont plus prioritaires que le précédent
---              et désindenter si l'opérateur est moins prioritaire que le précédent, mais sans jamais désindenter au-delà du niveau d'indentation de la première ligne
+--      SAUF si la 2e ligne commence par un opérateur infixe utilisé en position infixe (même niveau d'indentation)
+--              s'il y a plusieurs coupures avant des opérateurs (ils sont donc en début de ligne),
+--                  alors on pourra expérimenter pour indenter les opérateurs qui sont plus prioritaires que le précédent
+--                  et désindenter si l'opérateur est moins prioritaire que le précédent, mais sans jamais désindenter au-delà du niveau d'indentation de la première ligne
+--
+--          ou si la première ligne se termine par ">>= \<arg-name> ->". Comme par exemple dans :
+fun a =
+    f a >>= \b ->
+    g b >>= \c ->
+    h c
 --          
---      et sauf si la coupure se trouve à l'intérieur de parenthèses, crochets, accolades :
---          - si la ligne commence par une virgule ou le caractère fermant : la ligne n'est pas indentée
---          - sinon on indente de 2 caractères
+--          ou si la coupure se trouve à l'intérieur de parenthèses, crochets, accolades :
+--              - si la ligne commence par une virgule ou le caractère fermant : la ligne n'est pas indentée
+--              - sinon on indente (style préconisé : on indente de 2 caractères à cet endroit)
 --
 --      si coupure avant un 'in', le 'in' est indenté au même niveau que le 'let' précédent
 --      si coupure avant un 
+
+-- exemples :
+
+f x =
+    let
+        tab = [ 1
+              , 2
+              , 3
+              ]
+    in
+        tab |$> (_ + 1) -- map
+
+
+-- NB : actuellement le ';' n'est pas utilisé dans le langage. C'est donc un séparateur disponible pour une autre construction à venir.
+
 
 
 
